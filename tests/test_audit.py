@@ -37,6 +37,50 @@ def test_tampered_pkg_detects_network_subprocess_and_exfil():
     assert any("evil.example.com" in (h or "") for h in hosts)
 
 
+def test_re_compile_does_not_trigger_obfuscation(tmp_path: Path):
+    src = tmp_path / "pkg"
+    src.mkdir()
+    (src / "pyproject.toml").write_text('[project]\nname = "pkg"\nversion = "0.1"\n', encoding="utf-8")
+    (src / "mod.py").write_text("import re\npattern = re.compile(some_expr)\n", encoding="utf-8")
+
+    report = audit.audit_path(src)
+
+    assert SurfaceKind.OBFUSCATION.value not in kinds_of(report)
+
+
+def test_bare_exec_still_triggers_obfuscation(tmp_path: Path):
+    src = tmp_path / "pkg"
+    src.mkdir()
+    (src / "pyproject.toml").write_text('[project]\nname = "pkg"\nversion = "0.1"\n', encoding="utf-8")
+    (src / "mod.py").write_text("def run(payload):\n    exec(payload)\n", encoding="utf-8")
+
+    report = audit.audit_path(src)
+
+    assert SurfaceKind.OBFUSCATION.value in kinds_of(report)
+
+
+def test_test_directory_findings_do_not_deduct_from_score(tmp_path: Path):
+    src = tmp_path / "pkg"
+    src.mkdir()
+    (src / "pyproject.toml").write_text('[project]\nname = "pkg"\nversion = "0.1"\n', encoding="utf-8")
+    (src / "pkg.py").write_text("VERSION = '0.1'\n", encoding="utf-8")
+    tests = src / "tests"
+    tests.mkdir()
+    (tests / "test_something.py").write_text(
+        "import subprocess\nimport urllib.request\n"
+        "subprocess.run(['echo', 'hi'])\n"
+        "urllib.request.urlopen('http://example.com')\n",
+        encoding="utf-8",
+    )
+
+    report = audit.audit_path(src)
+
+    found_kinds = kinds_of(report)
+    assert SurfaceKind.SUBPROCESS.value in found_kinds
+    assert SurfaceKind.OUTBOUND_NETWORK.value in found_kinds
+    assert report.score.final_score == 100
+
+
 def test_score_includes_visible_rubric_breakdown():
     report = audit.audit_path(FIXTURES / "tampered_v2")
     deductions = report.score.deductions

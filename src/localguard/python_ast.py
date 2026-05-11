@@ -42,7 +42,7 @@ LISTENING_FQNS = {
 FS_WRITE_METHODS = {"write_text", "write_bytes"}
 FS_COPY_FQNS = {"shutil.copy", "shutil.copy2", "shutil.copyfile", "shutil.copytree", "shutil.move"}
 
-OBFUSCATION_BUILTINS = {"exec", "eval", "compile"}
+OBFUSCATION_FQNS = {"builtins.exec", "builtins.eval", "builtins.compile"}
 
 SECRET_NAME_PATTERN = re.compile(r"(API[_-]?KEY|TOKEN|SECRET|PASSWORD|PASSWD|PRIVATE[_-]?KEY|CREDENTIAL)", re.IGNORECASE)
 SENSITIVE_VAR_HINT = re.compile(r"(token|secret|password|api[_-]?key|credential|cookie|session)", re.IGNORECASE)
@@ -131,8 +131,8 @@ class _PythonVisitor(ast.NodeVisitor):
             self._add(SurfaceKind.FS_WRITE, node, _format_call(node, f".{attr}"), extra={"method": attr})
 
     def _check_obfuscation(self, node: ast.Call, fqn: str) -> None:
-        bare = fqn.split(".")[-1]
-        if bare in OBFUSCATION_BUILTINS and node.args and not _is_string_literal(node.args[0]):
+        if fqn in OBFUSCATION_FQNS and node.args and not _is_string_literal(node.args[0]):
+            bare = fqn.rsplit(".", 1)[-1]
             self._add(SurfaceKind.OBFUSCATION, node, f"{bare}(<dynamic>)", extra={"builtin": bare})
 
     def _check_env_secret(self, node: ast.Call, fqn: str) -> None:

@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import defaultdict
 from dataclasses import dataclass
 
+from . import walker
 from .report import Finding, ScoreBreakdown, SurfaceKind
 
 
@@ -31,7 +32,8 @@ STARTING_SCORE = 100
 
 def score(findings: list[Finding], weights: dict[SurfaceKind, Weight] | None = None) -> ScoreBreakdown:
     weights = weights or DEFAULT_WEIGHTS
-    counts = _count_by_kind(findings)
+    runtime = [f for f in findings if walker.find_context(f.file) == "runtime"]
+    counts = _count_by_kind(runtime)
     deductions = _build_deductions(counts, weights)
     total_deducted = sum(d["deducted"] for d in deductions)
     final = max(0, STARTING_SCORE - total_deducted)

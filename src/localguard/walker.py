@@ -7,6 +7,8 @@ from typing import Iterator
 
 
 SKIP_DIRS = {".git", ".venv", "venv", "__pycache__", "node_modules", "dist", "build", ".localguard", ".pytest_cache", ".ruff_cache"}
+TEST_DIR_NAMES = {"tests", "test", "testing", "__tests__", "spec", "specs"}
+DOC_DIR_NAMES = {"docs", "doc", "examples", "example", "samples"}
 PYTHON_SUFFIXES = {".py", ".pyi"}
 JS_SUFFIXES = {".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx"}
 TEXT_SUFFIXES = PYTHON_SUFFIXES | JS_SUFFIXES | {".md", ".txt", ".json", ".toml", ".yaml", ".yml", ".cfg", ".ini"}
@@ -64,6 +66,27 @@ def _classify(path: Path) -> str:
     if suffix in TEXT_SUFFIXES or path.name.lower() in {"readme", "license"}:
         return "text"
     return "binary"
+
+
+def find_context(rel: str) -> str:
+    parts = rel.replace("\\", "/").split("/")
+    if any(p.lower() in TEST_DIR_NAMES for p in parts[:-1]):
+        return "tests"
+    name = parts[-1].lower()
+    if name.startswith("test_") or name.endswith("_test.py") or name in {"conftest.py"}:
+        return "tests"
+    if any(p.lower() in DOC_DIR_NAMES for p in parts[:-1]):
+        return "docs"
+    if _is_doc_or_meta_file(name) and len(parts) == 1:
+        return "docs"
+    if name in {"setup.py", "setup.cfg", "pyproject.toml", "package.json", "manifest.in"} and len(parts) == 1:
+        return "setup"
+    return "runtime"
+
+
+def _is_doc_or_meta_file(name: str) -> bool:
+    stem = name.rsplit(".", 1)[0]
+    return stem in {"readme", "changelog", "changes", "history", "license", "licence", "notice", "contributing", "authors", "copying", "security"}
 
 
 def _safe_read(path: Path) -> str | None:
