@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import audit, diff, manifest
+from . import audit, diff, inspect as inspect_mod, manifest
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -20,6 +20,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_audit(sub)
     _add_pin(sub)
     _add_diff(sub)
+    _add_inspect(sub)
     return parser
 
 
@@ -44,6 +45,23 @@ def _add_diff(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--project", type=Path, default=Path.cwd())
     p.add_argument("--pretty", action="store_true")
     p.set_defaults(handler=_handle_diff)
+
+
+def _add_inspect(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser("inspect", help="Fetch a package from PyPI/npm and audit it.")
+    p.add_argument("spec", help="Package spec, e.g. 'requests==2.31.0' or '@modelcontextprotocol/server-filesystem@0.6.0'")
+    p.add_argument("--ecosystem", choices=["pypi", "npm"], default=None)
+    p.add_argument("--pretty", action="store_true")
+    p.set_defaults(handler=_handle_inspect)
+
+
+def _handle_inspect(args: argparse.Namespace) -> int:
+    report, spec, root = inspect_mod.inspect(args.spec, ecosystem=args.ecosystem)
+    payload = report.to_dict()
+    payload["spec"] = {"name": spec.name, "version": spec.version, "ecosystem": spec.ecosystem}
+    payload["audit_root"] = str(root)
+    _emit_json(payload, pretty=args.pretty)
+    return 0
 
 
 def _handle_audit(args: argparse.Namespace) -> int:
