@@ -3,7 +3,110 @@ from __future__ import annotations
 import json
 import re
 import tomllib
+from dataclasses import dataclass, field
 from pathlib import Path
+
+from . import fetch, inspect as inspect_mod, preflight as preflight_mod
+
+
+DEFAULT_MAX_DEPTH = 5
+
+
+@dataclass
+class TreeNode:
+    name: str
+    version: str | None
+    ecosystem: str
+    verdict: preflight_mod.Verdict | None = None
+    children: list["TreeNode"] = field(default_factory=list)
+    cycle: bool = False
+    error: str | None = None
+    truncated: bool = False
+
+    @property
+    def composed_status(self) -> str:
+        own = self.verdict.status if self.verdict else ("cycle" if self.cycle else "error" if self.error else "unknown")
+        if own not in {"safe", "first-encounter-accepted"}:
+            return own
+        for child in self.children:
+            cs = child.composed_status
+            if cs not in {"safe", "first-encounter-accepted"}:
+                return f"blocked-via:{child.name}={cs}"
+        return "safe"
+
+    @property
+    def blocked(self) -> bool:
+        return self.composed_status not in {"safe", "first-encounter-accepted"}
+
+
+def audit_tree(raw_spec: str, ecosystem: str | None = None, *, max_depth: int = DEFAULT_MAX_DEPTH, cache_root: Path | None = None, library_root: Path | None = None, visited: set[tuple[str, str, str]] | None = None, _depth: int = 0) -> TreeNode:
+    visited = visited if visited is not None else set()
+    cache_root = cache_root or fetch.DEFAULT_CACHE_ROOT
+    spec = _resolve_spec_with_version(raw_spec, ecosystem)
+    if spec is None:
+        return TreeNode(name=raw_spec, version=None, ecosystem=ecosystem or "unknown", error="could not resolve version")
+    key = (spec.ecosystem, spec.name.lower(), spec.version or "")
+    if key in visited:
+        return TreeNode(name=spec.name, version=spec.version, ecosystem=spec.ecosystem, cycle=True)
+    visited.add(key)
+    try:
+        report, _spec_back, audit_root = inspect_mod.inspect(f"{spec.name}=={spec.version}" if spec.version else spec.name, ecosystem=spec.ecosystem, cache_root=cache_root)
+    except Exception as exc:
+        return TreeNode(name=spec.name, version=spec.version, ecosystem=spec.ecosystem, error=str(exc))
+    verdict = preflight_mod.verdict_for_report(report.to_dict(), spec, library_root=library_root)
+    node = TreeNode(name=spec.name, version=spec.version, ecosystem=spec.ecosystem, verdict=verdict)
+    if _depth >= max_depth:
+        node.truncated = True
+        return node
+    for dep_name in extract_deps(audit_root, spec.ecosystem):
+        child = audit_tree(dep_name, ecosystem=spec.ecosystem, max_depth=max_depth, cache_root=cache_root, library_root=library_root, visited=visited, _depth=_depth + 1)
+        node.children.append(child)
+    return node
+
+
+def _resolve_spec_with_version(raw_spec: str, ecosystem: str | None) -> fetch.PackageSpec | None:
+    spec = fetch.parse_spec(raw_spec, ecosystem_override=ecosystem)
+    if spec.version:
+        return spec
+    try:
+        version = fetch.resolve_latest_version(spec.name, spec.ecosystem)
+    except fetch.FetchError:
+        return None
+    if not version:
+        return None
+    return fetch.PackageSpec(name=spec.name, version=version, ecosystem=spec.ecosystem)
+
+
+def render_tree(node: TreeNode) -> str:
+    lines: list[str] = []
+    _render(node, lines, prefix="", is_last=True, is_root=True)
+    return "\n".join(lines)
+
+
+def _render(node: TreeNode, lines: list[str], *, prefix: str, is_last: bool, is_root: bool) -> None:
+    connector = "" if is_root else ("`- " if is_last else "|- ")
+    lines.append(prefix + connector + _node_label(node))
+    if is_root:
+        child_prefix = ""
+    else:
+        child_prefix = prefix + ("   " if is_last else "|  ")
+    for i, child in enumerate(node.children):
+        _render(child, lines, prefix=child_prefix, is_last=(i == len(node.children) - 1), is_root=False)
+
+
+def _node_label(node: TreeNode) -> str:
+    spec = f"{node.name}=={node.version or '?'} ({node.ecosystem})"
+    if node.cycle:
+        return f"{spec} [cycle]"
+    if node.error:
+        return f"{spec} [ERROR: {node.error}]"
+    status = node.composed_status
+    own = node.verdict.status if node.verdict else status
+    tag = "OK" if status in {"safe", "first-encounter-accepted"} else "BLOCK"
+    suffix = f" [{tag}: {own}]"
+    if node.truncated:
+        suffix += " [truncated: max-depth]"
+    return spec + suffix
 
 
 REQUIREMENT_NAME_RE = re.compile(r"^([A-Za-z0-9._-]+|@[A-Za-z0-9._-]+/[A-Za-z0-9._-]+)")

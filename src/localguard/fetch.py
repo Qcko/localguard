@@ -44,6 +44,16 @@ def fetch_package(spec: PackageSpec, cache_root: Path = DEFAULT_CACHE_ROOT) -> P
     return dest
 
 
+def resolve_latest_version(name: str, ecosystem: str) -> str | None:
+    if ecosystem == "pypi":
+        data = _http_get_json(f"https://pypi.org/pypi/{name}/json")
+        return (data.get("info") or {}).get("version")
+    if ecosystem == "npm":
+        data = _http_get_json(f"https://registry.npmjs.org/{name}")
+        return (data.get("dist-tags") or {}).get("latest")
+    return None
+
+
 def parse_spec(raw: str, ecosystem_override: str | None = None) -> PackageSpec:
     ecosystem = ecosystem_override or _detect_ecosystem(raw)
     name, version = _split_name_and_version(raw, ecosystem)

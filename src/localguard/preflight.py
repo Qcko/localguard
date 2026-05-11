@@ -63,10 +63,13 @@ def preflight(
     library_root: Path | None = None,
 ) -> Verdict:
     cache_root = cache_root or fetch.DEFAULT_CACHE_ROOT
-    library_root = library_root or manifest.DEFAULT_LIBRARY_ROOT
     report, spec, _ = inspect.inspect(raw_spec, ecosystem=ecosystem, cache_root=cache_root)
-    report_dict = report.to_dict()
-    score = report.score.final_score if report.score else 0
+    return verdict_for_report(report.to_dict(), spec, min_score=min_score, accept_new=accept_new, library_root=library_root)
+
+
+def verdict_for_report(report_dict: dict, spec: fetch.PackageSpec, *, min_score: int = DEFAULT_MIN_SCORE, accept_new: bool = False, library_root: Path | None = None) -> Verdict:
+    library_root = library_root or manifest.DEFAULT_LIBRARY_ROOT
+    score = (report_dict.get("score") or {}).get("final_score") or 0
     baseline = manifest.latest_known_good(spec.name, spec.ecosystem, library_root=library_root)
     if baseline is None:
         return _first_encounter_verdict(report_dict, spec, score, min_score, accept_new, library_root)

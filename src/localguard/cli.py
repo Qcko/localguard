@@ -24,6 +24,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_preflight(sub)
     _add_accept(sub)
     _add_deps(sub)
+    _add_tree(sub)
     _add_hook_bash(sub)
     return parser
 
@@ -33,6 +34,20 @@ def _add_deps(sub: argparse._SubParsersAction) -> None:
     p.add_argument("spec")
     p.add_argument("--ecosystem", choices=["pypi", "npm"], default=None)
     p.set_defaults(handler=_handle_deps)
+
+
+def _add_tree(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser("tree", help="Recursively audit a package and its declared dependencies; print the tree with verdicts.")
+    p.add_argument("spec")
+    p.add_argument("--ecosystem", choices=["pypi", "npm"], default=None)
+    p.add_argument("--max-depth", type=int, default=deps_mod.DEFAULT_MAX_DEPTH)
+    p.set_defaults(handler=_handle_tree)
+
+
+def _handle_tree(args: argparse.Namespace) -> int:
+    node = deps_mod.audit_tree(args.spec, ecosystem=args.ecosystem, max_depth=args.max_depth)
+    sys.stdout.write(deps_mod.render_tree(node) + "\n")
+    return 1 if node.blocked else 0
 
 
 def _handle_deps(args: argparse.Namespace) -> int:
