@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import audit, diff, hook, inspect as inspect_mod, manifest, preflight as preflight_mod
+from . import audit, deps as deps_mod, diff, hook, inspect as inspect_mod, manifest, preflight as preflight_mod
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -23,8 +23,31 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_inspect(sub)
     _add_preflight(sub)
     _add_accept(sub)
+    _add_deps(sub)
     _add_hook_bash(sub)
     return parser
+
+
+def _add_deps(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser("deps", help="Fetch a package and list its declared immediate dependencies.")
+    p.add_argument("spec")
+    p.add_argument("--ecosystem", choices=["pypi", "npm"], default=None)
+    p.set_defaults(handler=_handle_deps)
+
+
+def _handle_deps(args: argparse.Namespace) -> int:
+    from . import fetch
+    spec = fetch.parse_spec(args.spec, ecosystem_override=args.ecosystem)
+    unpacked = fetch.fetch_package(spec)
+    audit_root = inspect_mod._pick_audit_root(unpacked, spec.ecosystem)
+    declared = deps_mod.extract_deps(audit_root, spec.ecosystem)
+    sys.stdout.write(f"{spec.name}=={spec.version or '(unversioned)'} ({spec.ecosystem})\n")
+    if not declared:
+        sys.stdout.write("  (no declared dependencies)\n")
+        return 0
+    for name in declared:
+        sys.stdout.write(f"  - {name}\n")
+    return 0
 
 
 def _add_audit(sub: argparse._SubParsersAction) -> None:
