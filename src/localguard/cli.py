@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import audit, diff, inspect as inspect_mod, manifest
+from . import audit, diff, hook, inspect as inspect_mod, manifest, preflight as preflight_mod
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -21,6 +21,8 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_pin(sub)
     _add_diff(sub)
     _add_inspect(sub)
+    _add_preflight(sub)
+    _add_hook_bash(sub)
     return parser
 
 
@@ -53,6 +55,39 @@ def _add_inspect(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--ecosystem", choices=["pypi", "npm"], default=None)
     p.add_argument("--pretty", action="store_true")
     p.set_defaults(handler=_handle_inspect)
+
+
+def _add_preflight(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser("preflight", help="Audit + library diff a package spec; exit non-zero if unsafe.")
+    p.add_argument("spec")
+    p.add_argument("--ecosystem", choices=["pypi", "npm"], default=None)
+    p.add_argument("--min-score", type=int, default=preflight_mod.DEFAULT_MIN_SCORE)
+    p.add_argument("--accept-new", action="store_true", help="Auto-pin a first-time-seen package if it meets the score threshold.")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(handler=_handle_preflight)
+
+
+def _add_hook_bash(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser("hook-bash", help="Claude Code PreToolUse hook: reads tool_use JSON from stdin, blocks unsafe installs.")
+    p.set_defaults(handler=_handle_hook_bash)
+
+
+def _handle_hook_bash(args: argparse.Namespace) -> int:
+    return hook.main_entry()
+
+
+def _handle_preflight(args: argparse.Namespace) -> int:
+    verdict = preflight_mod.preflight(
+        args.spec,
+        ecosystem=args.ecosystem,
+        min_score=args.min_score,
+        accept_new=args.accept_new,
+    )
+    if args.json:
+        _emit_json(verdict.to_dict(), pretty=True)
+    else:
+        sys.stdout.write(verdict.human_summary() + "\n")
+    return 0 if verdict.safe else 1
 
 
 def _handle_inspect(args: argparse.Namespace) -> int:

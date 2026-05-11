@@ -11,7 +11,8 @@
       "Bash(git -c core.autocrlf=true commit -m \"docs: add SESSION.md cross-session handoff log\")",
       "Bash(git push *)",
       "PowerShell(cd E:/dev/localguard; $env:UV_CACHE_DIR='E:\\\\uv\\\\cache'; $env:LOCALGUARD_CACHE=\"$env:TEMP\\\\lg-smoke\"; $out = uv run localguard inspect \"requests==2.31.0\" 2>&1; \"exit=$LASTEXITCODE\"; $out | ConvertFrom-Json | ForEach-Object { \"score=$\\($_.score.final_score\\), findings=$\\($_.findings.Count\\), files=$\\($_.files_audited\\)\"; $_.score.deductions | ForEach-Object { \"  -$\\($_.deducted\\) $\\($_.kind\\) x$\\($_.count\\)\" } })",
-      "Bash(git -c core.autocrlf=true commit -m 'feat: `localguard inspect <pkg>` fetches and audits from PyPI/npm *)"
+      "Bash(git -c core.autocrlf=true commit -m 'feat: `localguard inspect <pkg>` fetches and audits from PyPI/npm *)",
+      "Bash(git rm *)"
     ]
   }
 }
