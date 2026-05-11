@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv --version)",
+      "PowerShell(cd E:/dev/localguard; $env:UV_CACHE_DIR='E:\\\\uv\\\\cache'; uv add --dev pytest ruff 2>&1 | Select-Object -Last 20)",
+      "PowerShell(cd E:/dev/localguard; $env:UV_CACHE_DIR='E:\\\\uv\\\\cache'; uv run localguard audit tests/fixtures/clean_pkg > $null 2>&1; \"exit=$LASTEXITCODE\")",
+      "Bash(git add *)"
+    ]
+  }
+}
