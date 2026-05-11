@@ -41,7 +41,12 @@ def run_hook(stdin_text: str, stderr=sys.stderr, stdout=sys.stdout) -> int:
     blockers: list[str] = []
     for install in installs:
         for spec in install.specs:
-            verdict = preflight_mod.preflight(spec, ecosystem=install.ecosystem, accept_new=True)
+            try:
+                verdict = preflight_mod.preflight(spec, ecosystem=install.ecosystem)
+            except Exception as exc:
+                stderr.write(f"[localguard] BLOCK {spec} ({install.ecosystem}): preflight error: {exc}\n")
+                blockers.append(f"{spec} ({install.ecosystem}): preflight-error")
+                continue
             line = verdict.human_summary()
             stream = stdout if verdict.safe else stderr
             stream.write(line + "\n")

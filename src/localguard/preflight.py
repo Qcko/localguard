@@ -79,7 +79,7 @@ def _first_encounter_verdict(report_dict, spec, score, min_score, accept_new, li
         reasons.append(f"score {score} below threshold {min_score}")
         return Verdict(status="low-score", spec_name=spec.name, spec_version=spec.version, ecosystem=spec.ecosystem, score=score, reasons=reasons)
     if not accept_new:
-        reasons.append("first encounter — re-run with --accept-new to add to library")
+        reasons.append(f"first encounter — review and run `localguard accept {spec.name}{('==' + spec.version) if spec.version else ''}` to baseline it")
         return Verdict(status="first-encounter-needs-accept", spec_name=spec.name, spec_version=spec.version, ecosystem=spec.ecosystem, score=score, reasons=reasons)
     manifest.write_library_entry(report_dict, library_root=library_root)
     reasons.append("pinned into library as new baseline")

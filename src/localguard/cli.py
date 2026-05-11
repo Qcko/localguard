@@ -22,6 +22,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_diff(sub)
     _add_inspect(sub)
     _add_preflight(sub)
+    _add_accept(sub)
     _add_hook_bash(sub)
     return parser
 
@@ -65,6 +66,43 @@ def _add_preflight(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--accept-new", action="store_true", help="Auto-pin a first-time-seen package if it meets the score threshold.")
     p.add_argument("--json", action="store_true")
     p.set_defaults(handler=_handle_preflight)
+
+
+def _add_accept(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser("accept", help="Fetch + audit a package, then pin it into the library as a deliberate baseline.")
+    p.add_argument("spec")
+    p.add_argument("--ecosystem", choices=["pypi", "npm"], default=None)
+    p.add_argument("--yes", action="store_true", help="Skip the confirmation prompt.")
+    p.set_defaults(handler=_handle_accept)
+
+
+def _handle_accept(args: argparse.Namespace) -> int:
+    report, spec, _ = inspect_mod.inspect(args.spec, ecosystem=args.ecosystem)
+    report_dict = report.to_dict()
+    score = (report_dict.get("score") or {}).get("final_score")
+    sys.stdout.write(f"package: {spec.name}=={spec.version or '(unversioned)'} ({spec.ecosystem})\n")
+    sys.stdout.write(f"score:   {score}/100\n")
+    sys.stdout.write(_finding_summary(report_dict) + "\n")
+    if not args.yes:
+        sys.stdout.write("Type 'accept' to baseline this package, anything else to abort: ")
+        sys.stdout.flush()
+        reply = sys.stdin.readline().strip().lower()
+        if reply != "accept":
+            sys.stdout.write("aborted; no library entry written\n")
+            return 1
+    library_path = manifest.write_library_entry(report_dict)
+    sys.stdout.write(f"baselined: {library_path}\n")
+    return 0
+
+
+def _finding_summary(report_dict: dict) -> str:
+    counts: dict[str, int] = {}
+    for f in report_dict.get("findings") or []:
+        counts[f["kind"]] = counts.get(f["kind"], 0) + 1
+    if not counts:
+        return "findings: none"
+    parts = [f"{n} {k}" for k, n in sorted(counts.items(), key=lambda kv: -kv[1])]
+    return "findings: " + ", ".join(parts)
 
 
 def _add_hook_bash(sub: argparse._SubParsersAction) -> None:

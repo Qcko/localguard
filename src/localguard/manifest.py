@@ -39,7 +39,8 @@ def find_pinned_entry(project_root: Path, name: str | None, target_hash: str) ->
     return None
 
 
-def write_library_entry(report: dict[str, Any], library_root: Path = DEFAULT_LIBRARY_ROOT) -> Path:
+def write_library_entry(report: dict[str, Any], library_root: Path | None = None) -> Path:
+    library_root = library_root or DEFAULT_LIBRARY_ROOT
     bucket = _bucket_for(report, library_root)
     bucket.mkdir(parents=True, exist_ok=True)
     report_path = bucket / f"{report['target_hash']}.json"
@@ -48,7 +49,8 @@ def write_library_entry(report: dict[str, Any], library_root: Path = DEFAULT_LIB
     return report_path
 
 
-def latest_known_good(name: str, ecosystem: str, library_root: Path = DEFAULT_LIBRARY_ROOT) -> dict | None:
+def latest_known_good(name: str, ecosystem: str, library_root: Path | None = None) -> dict | None:
+    library_root = library_root or DEFAULT_LIBRARY_ROOT
     index_path = library_root / ecosystem / name / "_index.json"
     data = _read_json(index_path)
     if not data:
@@ -61,7 +63,8 @@ def latest_known_good(name: str, ecosystem: str, library_root: Path = DEFAULT_LI
     return _read_json(report_path)
 
 
-def library_lookup(target_hash: str, name: str | None, ecosystem: str, library_root: Path = DEFAULT_LIBRARY_ROOT) -> dict | None:
+def library_lookup(target_hash: str, name: str | None, ecosystem: str, library_root: Path | None = None) -> dict | None:
+    library_root = library_root or DEFAULT_LIBRARY_ROOT
     if not name:
         return None
     name_root = library_root / ecosystem / name

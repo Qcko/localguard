@@ -83,6 +83,27 @@ def test_hook_allows_safe_install(tmp_path, monkeypatch):
     assert "BLOCK" not in err
 
 
+def test_hook_fails_closed_on_preflight_exception(monkeypatch):
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("network down")
+    monkeypatch.setattr(preflight, "preflight", boom)
+    payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "pip install ghost==9.9.9"}})
+    code, _out, err = hook.render_to_string(payload)
+    assert code == 2
+    assert "preflight error" in err
+    assert "ghost" in err
+
+
+def test_hook_strict_mode_blocks_first_encounter(tmp_path, monkeypatch):
+    _seed_cache_only(tmp_path, "clean-pkg", "0.1.0", FIXTURES / "clean_pkg")
+    _patch_roots(monkeypatch, tmp_path)
+    payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "pip install clean-pkg==0.1.0"}})
+    code, out, err = hook.render_to_string(payload)
+    assert code == 2
+    assert "first-encounter-needs-accept" in err
+    assert "localguard accept" in err
+
+
 def test_hook_blocks_low_score_install(tmp_path, monkeypatch):
     _seed_cache_only(tmp_path, "drifty-pkg", "0.2.0", FIXTURES / "tampered_v2")
     _patch_roots(monkeypatch, tmp_path)
