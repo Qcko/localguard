@@ -7,7 +7,9 @@ authors = [
     { name = "Qcko", email = "komec@centrum.cz" }
 ]
 requires-python = ">=3.12"
-dependencies = []
+dependencies = [
+    "packaging>=24.0",
+]
 
 [project.scripts]
 localguard = "localguard:main"

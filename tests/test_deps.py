@@ -25,7 +25,11 @@ def test_python_deps_from_pyproject(tmp_path: Path):
 
     result = deps.extract_deps(tmp_path, "pypi")
 
-    assert result == ["requests", "urllib3", "rich", "tomli"]
+    assert [d.name for d in result] == ["requests", "urllib3", "rich", "tomli"]
+    by_name = {d.name: d.specifier for d in result}
+    assert by_name["requests"] == ">=2.25.0"
+    assert by_name["urllib3"] == ">=1.21.1,<3"
+    assert by_name["tomli"] is None  # marker-only, no version spec
 
 
 def test_python_deps_from_pkg_info_when_no_pyproject(tmp_path: Path):
@@ -39,7 +43,8 @@ def test_python_deps_from_pkg_info_when_no_pyproject(tmp_path: Path):
 
     result = deps.extract_deps(tmp_path, "pypi")
 
-    assert result == ["requests", "urllib3"]
+    assert [d.name for d in result] == ["requests", "urllib3"]
+    assert next(d for d in result if d.name == "urllib3").specifier == ">=1.21.1,<3"
 
 
 def test_python_deps_from_egg_info_requires_txt(tmp_path: Path):
@@ -59,7 +64,8 @@ def test_python_deps_from_egg_info_requires_txt(tmp_path: Path):
 
     result = deps.extract_deps(tmp_path, "pypi")
 
-    assert result == ["charset_normalizer", "idna", "urllib3", "certifi"]
+    assert [d.name for d in result] == ["charset_normalizer", "idna", "urllib3", "certifi"]
+    assert next(d for d in result if d.name == "certifi").specifier == ">=2017.4.17"
 
 
 def test_npm_deps_from_package_json(tmp_path: Path):
@@ -75,7 +81,8 @@ def test_npm_deps_from_package_json(tmp_path: Path):
 
     result = deps.extract_deps(tmp_path, "npm")
 
-    assert result == ["@modelcontextprotocol/sdk", "zod"]
+    assert [d.name for d in result] == ["@modelcontextprotocol/sdk", "zod"]
+    assert next(d for d in result if d.name == "zod").specifier == "^3.0.0"
 
 
 def test_extracts_nothing_when_no_metadata(tmp_path: Path):
@@ -110,6 +117,24 @@ def test_audit_tree_blocks_via_unknown_child(tmp_path: Path, monkeypatch):
     assert node.verdict.safe
     assert node.blocked is True
     assert node.composed_status.startswith("blocked-via:unknown-dep")
+
+
+def test_audit_tree_resolves_child_via_specifier(tmp_path: Path, monkeypatch):
+    _seed_pkg(tmp_path, "parent", "1.0", deps=["child>=1.5,<2"])
+    _seed_pkg(tmp_path, "child", "1.7", deps=[])
+
+    captured: dict = {}
+
+    def fake_resolver(name: str, ecosystem: str, specifier):
+        captured["call"] = (name, specifier)
+        return "1.7"
+
+    monkeypatch.setattr(fetch, "resolve_matching_version", fake_resolver)
+
+    node = deps.audit_tree("parent==1.0", cache_root=tmp_path / "cache", library_root=tmp_path / "lib")
+
+    assert captured["call"] == ("child", ">=1.5,<2")
+    assert node.children[0].version == "1.7"
 
 
 def test_audit_tree_auto_baselines_clean_high_score_nodes(tmp_path: Path, monkeypatch):
@@ -191,11 +216,11 @@ def _walk(node):
 
 
 def test_parse_requirement_handles_edge_cases():
-    assert deps.parse_requirement("requests>=2.25") == "requests"
-    assert deps.parse_requirement("Requests") == "requests"
-    assert deps.parse_requirement("rich[markdown]>=13") == "rich"
-    assert deps.parse_requirement("urllib3 (>=1.21.1,<3)") == "urllib3"
-    assert deps.parse_requirement("tomli; python_version < '3.11'") == "tomli"
+    assert deps.parse_requirement("requests>=2.25") == deps.DepRequirement("requests", ">=2.25")
+    assert deps.parse_requirement("Requests") == deps.DepRequirement("requests", None)
+    assert deps.parse_requirement("rich[markdown]>=13") == deps.DepRequirement("rich", ">=13")
+    assert deps.parse_requirement("urllib3 (>=1.21.1,<3)") == deps.DepRequirement("urllib3", ">=1.21.1,<3")
+    assert deps.parse_requirement("tomli; python_version < '3.11'") == deps.DepRequirement("tomli", None)
     assert deps.parse_requirement("pytest; extra == 'test'") is None
     assert deps.parse_requirement("") is None
     assert deps.parse_requirement(";") is None

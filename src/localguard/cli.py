@@ -127,8 +127,9 @@ def _handle_deps(args: argparse.Namespace) -> int:
     if not declared:
         sys.stdout.write("  (no declared dependencies)\n")
         return 0
-    for name in declared:
-        sys.stdout.write(f"  - {name}\n")
+    for dep in declared:
+        spec_str = f" {dep.specifier}" if dep.specifier else ""
+        sys.stdout.write(f"  - {dep.name}{spec_str}\n")
     return 0
 
 

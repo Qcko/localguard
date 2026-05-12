@@ -39,10 +39,10 @@ class TreeNode:
         return self.composed_status not in {"safe", "first-encounter-accepted"}
 
 
-def audit_tree(raw_spec: str, ecosystem: str | None = None, *, max_depth: int = DEFAULT_MAX_DEPTH, cache_root: Path | None = None, library_root: Path | None = None, visited: set[tuple[str, str, str]] | None = None, _depth: int = 0) -> TreeNode:
+def audit_tree(raw_spec: str, ecosystem: str | None = None, *, max_depth: int = DEFAULT_MAX_DEPTH, cache_root: Path | None = None, library_root: Path | None = None, visited: set[tuple[str, str, str]] | None = None, specifier: str | None = None, _depth: int = 0) -> TreeNode:
     visited = visited if visited is not None else set()
     cache_root = cache_root or fetch.DEFAULT_CACHE_ROOT
-    spec = _resolve_spec_with_version(raw_spec, ecosystem)
+    spec = _resolve_spec_with_version(raw_spec, ecosystem, specifier=specifier)
     if spec is None:
         return TreeNode(name=raw_spec, version=None, ecosystem=ecosystem or "unknown", error="could not resolve version")
     key = (spec.ecosystem, spec.name.lower(), spec.version or "")
@@ -58,18 +58,18 @@ def audit_tree(raw_spec: str, ecosystem: str | None = None, *, max_depth: int = 
     if _depth >= max_depth:
         node.truncated = True
         return node
-    for dep_name in extract_deps(audit_root, spec.ecosystem):
-        child = audit_tree(dep_name, ecosystem=spec.ecosystem, max_depth=max_depth, cache_root=cache_root, library_root=library_root, visited=visited, _depth=_depth + 1)
+    for dep in extract_deps(audit_root, spec.ecosystem):
+        child = audit_tree(dep.name, ecosystem=spec.ecosystem, max_depth=max_depth, cache_root=cache_root, library_root=library_root, visited=visited, specifier=dep.specifier, _depth=_depth + 1)
         node.children.append(child)
     return node
 
 
-def _resolve_spec_with_version(raw_spec: str, ecosystem: str | None) -> fetch.PackageSpec | None:
+def _resolve_spec_with_version(raw_spec: str, ecosystem: str | None, *, specifier: str | None = None) -> fetch.PackageSpec | None:
     spec = fetch.parse_spec(raw_spec, ecosystem_override=ecosystem)
     if spec.version:
         return spec
     try:
-        version = fetch.resolve_latest_version(spec.name, spec.ecosystem)
+        version = fetch.resolve_matching_version(spec.name, spec.ecosystem, specifier) if specifier else fetch.resolve_latest_version(spec.name, spec.ecosystem)
     except fetch.FetchError:
         return None
     if not version:
@@ -112,7 +112,16 @@ def _node_label(node: TreeNode) -> str:
 REQUIREMENT_NAME_RE = re.compile(r"^([A-Za-z0-9._-]+|@[A-Za-z0-9._-]+/[A-Za-z0-9._-]+)")
 
 
-def extract_deps(audit_root: Path, ecosystem: str) -> list[str]:
+@dataclass(frozen=True)
+class DepRequirement:
+    name: str
+    specifier: str | None = None
+
+    def as_spec(self) -> str:
+        return self.name
+
+
+def extract_deps(audit_root: Path, ecosystem: str) -> list[DepRequirement]:
     if ecosystem == "pypi":
         return _python_deps(audit_root)
     if ecosystem == "npm":
@@ -120,7 +129,7 @@ def extract_deps(audit_root: Path, ecosystem: str) -> list[str]:
     return []
 
 
-def _python_deps(audit_root: Path) -> list[str]:
+def _python_deps(audit_root: Path) -> list[DepRequirement]:
     pyproject = audit_root / "pyproject.toml"
     if pyproject.exists():
         deps = _deps_from_pyproject(pyproject)
@@ -132,18 +141,18 @@ def _python_deps(audit_root: Path) -> list[str]:
     return _deps_from_egg_info(audit_root)
 
 
-def _deps_from_egg_info(audit_root: Path) -> list[str]:
+def _deps_from_egg_info(audit_root: Path) -> list[DepRequirement]:
     for requires_txt in audit_root.glob("*.egg-info/requires.txt"):
         return _parse_egg_requires(requires_txt)
     return []
 
 
-def _parse_egg_requires(path: Path) -> list[str]:
+def _parse_egg_requires(path: Path) -> list[DepRequirement]:
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return []
-    names: list[str] = []
+    reqs: list[DepRequirement] = []
     for raw in text.splitlines():
         line = raw.strip()
         if not line:
@@ -152,11 +161,11 @@ def _parse_egg_requires(path: Path) -> list[str]:
             break  # extras section — stop at first [extra] header
         parsed = parse_requirement(line)
         if parsed:
-            names.append(parsed)
-    return _dedupe(names)
+            reqs.append(parsed)
+    return _dedupe(reqs)
 
 
-def _deps_from_pyproject(path: Path) -> list[str]:
+def _deps_from_pyproject(path: Path) -> list[DepRequirement]:
     try:
         data = tomllib.loads(path.read_text(encoding="utf-8"))
     except (OSError, tomllib.TOMLDecodeError):
@@ -165,33 +174,33 @@ def _deps_from_pyproject(path: Path) -> list[str]:
     return _dedupe([parsed for req in raw if (parsed := parse_requirement(req))])
 
 
-def _deps_from_pkg_info(audit_root: Path) -> list[str]:
+def _deps_from_pkg_info(audit_root: Path) -> list[DepRequirement]:
     candidates = list(audit_root.glob("*.dist-info/METADATA")) + list(audit_root.glob("PKG-INFO"))
-    names: list[str] = []
+    reqs: list[DepRequirement] = []
     for path in candidates:
-        names.extend(_parse_requires_dist(path))
-        if names:
+        reqs.extend(_parse_requires_dist(path))
+        if reqs:
             break
-    return _dedupe(names)
+    return _dedupe(reqs)
 
 
-def _parse_requires_dist(path: Path) -> list[str]:
+def _parse_requires_dist(path: Path) -> list[DepRequirement]:
     try:
         text = path.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return []
-    names: list[str] = []
+    reqs: list[DepRequirement] = []
     for line in text.splitlines():
         if not line.startswith("Requires-Dist:"):
             continue
         req = line.split(":", 1)[1].strip()
         parsed = parse_requirement(req)
         if parsed:
-            names.append(parsed)
-    return names
+            reqs.append(parsed)
+    return reqs
 
 
-def _npm_deps(audit_root: Path) -> list[str]:
+def _npm_deps(audit_root: Path) -> list[DepRequirement]:
     package_json = audit_root / "package.json"
     if not package_json.exists():
         return []
@@ -200,10 +209,11 @@ def _npm_deps(audit_root: Path) -> list[str]:
     except (OSError, json.JSONDecodeError):
         return []
     deps = data.get("dependencies") or {}
-    return _dedupe([name for name in deps.keys() if _looks_like_npm_name(name)])
+    out = [DepRequirement(name=name, specifier=str(spec) if spec else None) for name, spec in deps.items() if _looks_like_npm_name(name)]
+    return _dedupe(out)
 
 
-def parse_requirement(req_str: str) -> str | None:
+def parse_requirement(req_str: str) -> DepRequirement | None:
     req = req_str.strip()
     if not req:
         return None
@@ -216,7 +226,23 @@ def parse_requirement(req_str: str) -> str | None:
     match = REQUIREMENT_NAME_RE.match(req)
     if not match:
         return None
-    return match.group(1).lower()
+    name = match.group(1).lower()
+    rest = req[match.end():].strip()
+    if rest.startswith("["):
+        close = rest.find("]")
+        if close != -1:
+            rest = rest[close + 1:].strip()
+    specifier = _normalise_specifier(rest)
+    return DepRequirement(name=name, specifier=specifier)
+
+
+def _normalise_specifier(raw: str) -> str | None:
+    raw = raw.strip()
+    if not raw:
+        return None
+    if raw.startswith("(") and raw.endswith(")"):
+        raw = raw[1:-1].strip()
+    return raw or None
 
 
 def _marker_is_extra_only(marker: str) -> bool:
@@ -231,11 +257,11 @@ def _looks_like_npm_name(name: str) -> bool:
     return bool(re.match(r"^[a-z0-9._-]+$", name))
 
 
-def _dedupe(items: list[str]) -> list[str]:
+def _dedupe(items: list[DepRequirement]) -> list[DepRequirement]:
     seen: set[str] = set()
-    out: list[str] = []
+    out: list[DepRequirement] = []
     for item in items:
-        if item not in seen:
-            seen.add(item)
+        if item.name not in seen:
+            seen.add(item.name)
             out.append(item)
     return out

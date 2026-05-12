@@ -54,6 +54,37 @@ def resolve_latest_version(name: str, ecosystem: str) -> str | None:
     return None
 
 
+def resolve_matching_version(name: str, ecosystem: str, specifier: str | None) -> str | None:
+    if not specifier or specifier.strip() in {"", "*"}:
+        return resolve_latest_version(name, ecosystem)
+    if ecosystem == "pypi":
+        return _resolve_pypi_match(name, specifier)
+    return resolve_latest_version(name, ecosystem)
+
+
+def _resolve_pypi_match(name: str, specifier: str) -> str | None:
+    from packaging.specifiers import InvalidSpecifier, SpecifierSet
+    from packaging.version import InvalidVersion, Version
+    try:
+        spec_set = SpecifierSet(specifier)
+    except InvalidSpecifier:
+        return resolve_latest_version(name, "pypi")
+    data = _http_get_json(f"https://pypi.org/pypi/{name}/json")
+    releases = data.get("releases") or {}
+    parsed: list[Version] = []
+    for raw in releases.keys():
+        try:
+            parsed.append(Version(raw))
+        except InvalidVersion:
+            continue
+    matches = [v for v in parsed if v in spec_set and not v.is_prerelease]
+    if not matches:
+        matches = [v for v in parsed if v in spec_set]
+    if not matches:
+        return None
+    return str(max(matches))
+
+
 def parse_spec(raw: str, ecosystem_override: str | None = None) -> PackageSpec:
     ecosystem = ecosystem_override or _detect_ecosystem(raw)
     name, version = _split_name_and_version(raw, ecosystem)
