@@ -29,7 +29,9 @@
       "Bash(git -C E:/dev/localguard status)",
       "Bash(ls ~/.claude/skills 2>&1 | head -20)",
       "Bash(mkdir -p ~/.claude/skills/localguard-review)",
-      "Bash(uv sync *)"
+      "Bash(uv sync *)",
+      "Bash(uv add *)",
+      "Bash(uv remove *)"
     ]
   }
 }

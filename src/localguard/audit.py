@@ -4,7 +4,7 @@ import json
 import tomllib
 from pathlib import Path
 
-from . import mcp_detector, python_ast, rubric, text_sweep
+from . import js_ast, mcp_detector, python_ast, rubric, text_sweep
 from .report import AuditReport, Finding
 from .walker import SourceFile, hash_target, walk_target
 
@@ -38,6 +38,8 @@ def _findings_for_source(source: SourceFile) -> list[Finding]:
     findings: list[Finding] = []
     if source.language == "python":
         findings.extend(python_ast.audit_python(source))
+    elif source.language == "javascript":
+        findings.extend(js_ast.audit_js(source))
     findings.extend(text_sweep.sweep_text(source))
     findings.extend(mcp_detector.detect_mcp(source))
     return findings
