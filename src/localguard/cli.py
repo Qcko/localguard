@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import audit, deps as deps_mod, diff, hook, inspect as inspect_mod, manifest, preflight as preflight_mod
+from . import audit, deps as deps_mod, diff, hook, init_hook as init_hook_mod, inspect as inspect_mod, manifest, preflight as preflight_mod
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -26,8 +26,33 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_deps(sub)
     _add_tree(sub)
     _add_library(sub)
+    _add_init_hook(sub)
     _add_hook_bash(sub)
     return parser
+
+
+def _add_init_hook(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser("init-hook", help="Register the LocalGuard PreToolUse hook into Claude Code's settings.json.")
+    p.add_argument("--settings", type=Path, default=None, help="Override path to settings.json (default: ~/.claude/settings.json).")
+    p.add_argument("--binary", type=Path, default=None, help="Override path to the localguard executable.")
+    p.add_argument("--force", action="store_true", help="Replace an existing localguard hook command instead of leaving it alone.")
+    p.set_defaults(handler=_handle_init_hook)
+
+
+def _handle_init_hook(args: argparse.Namespace) -> int:
+    try:
+        result = init_hook_mod.install_hook(settings=args.settings, binary=args.binary, force=args.force)
+    except FileNotFoundError as exc:
+        sys.stderr.write(f"init-hook: {exc}\n")
+        return 1
+    sys.stdout.write(f"settings: {result.settings_path}\n")
+    sys.stdout.write(f"command:  {result.hook_command}\n")
+    sys.stdout.write(f"status:   {result.status}\n")
+    if result.status == "already-present":
+        sys.stdout.write("note: a localguard hook is already wired; re-run with --force to overwrite its command.\n")
+    elif result.status in {"added", "replaced"}:
+        sys.stdout.write("note: restart Claude Desktop (hrcc) for the new hook to load.\n")
+    return 0
 
 
 def _add_library(sub: argparse._SubParsersAction) -> None:
