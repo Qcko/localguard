@@ -11,6 +11,7 @@ DEFAULT_MIN_SCORE = 50
 DEFAULT_AUTO_ACCEPT_SCORE = 90
 HIGH_RISK_KINDS = {
     "outbound_network",
+    "outbound_dynamic",
     "listening_port",
     "subprocess",
     "data_exfil_hint",

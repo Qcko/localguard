@@ -8,6 +8,7 @@ from .report import SurfaceKind
 
 SIGNATURE_KEYS: dict[str, str] = {
     SurfaceKind.OUTBOUND_NETWORK.value: "host",
+    SurfaceKind.OUTBOUND_DYNAMIC.value: "fqn",
     SurfaceKind.TELEMETRY_ENDPOINT.value: "host",
     SurfaceKind.HARDCODED_HOST.value: "host",
     SurfaceKind.LISTENING_PORT.value: "fqn",

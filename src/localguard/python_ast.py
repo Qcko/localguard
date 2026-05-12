@@ -101,10 +101,11 @@ class _PythonVisitor(ast.NodeVisitor):
     def _check_outbound(self, node: ast.Call, fqn: str) -> None:
         if fqn in OUTBOUND_FQNS:
             detail = _format_call(node, fqn)
-            self._add(SurfaceKind.OUTBOUND_NETWORK, node, detail, extra={"fqn": fqn})
+            kind, extra = _classify_egress(node, fqn)
+            self._add(kind, node, detail, extra=extra)
             self._check_exfil_hint(node)
         elif fqn.endswith(".connect") and _root_alias(fqn, self.aliases) == "socket":
-            self._add(SurfaceKind.OUTBOUND_NETWORK, node, _format_call(node, fqn), extra={"fqn": fqn})
+            self._add(SurfaceKind.OUTBOUND_DYNAMIC, node, _format_call(node, fqn), extra={"fqn": fqn})
 
     def _check_subprocess(self, node: ast.Call, fqn: str) -> None:
         if fqn in SUBPROCESS_FQNS:
@@ -227,6 +228,33 @@ def _references_sensitive(node: ast.AST) -> bool:
         if isinstance(child, ast.Attribute) and SENSITIVE_VAR_HINT.search(child.attr):
             return True
     return False
+
+
+def _classify_egress(node: ast.Call, fqn: str) -> tuple[SurfaceKind, dict]:
+    host = _extract_static_host(node)
+    if host:
+        return SurfaceKind.OUTBOUND_NETWORK, {"fqn": fqn, "host": host}
+    return SurfaceKind.OUTBOUND_DYNAMIC, {"fqn": fqn, "host": None}
+
+
+def _extract_static_host(node: ast.Call) -> str | None:
+    if not node.args:
+        return None
+    url = _const_str(node.args[0])
+    if not url:
+        return None
+    return _host_from_url(url)
+
+
+def _host_from_url(url: str) -> str | None:
+    from urllib.parse import urlparse
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return None
+    if parsed.hostname:
+        return parsed.hostname
+    return None
 
 
 def _format_call(node: ast.Call, label: str) -> str:

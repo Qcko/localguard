@@ -15,6 +15,7 @@ class Weight:
 
 DEFAULT_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.OUTBOUND_NETWORK: Weight(5, 25),
+    SurfaceKind.OUTBOUND_DYNAMIC: Weight(10, 40),
     SurfaceKind.LISTENING_PORT: Weight(15, 45),
     SurfaceKind.SUBPROCESS: Weight(15, 40),
     SurfaceKind.FS_WRITE: Weight(5, 15),

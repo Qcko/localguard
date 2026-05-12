@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import audit, cache as cache_mod, deps as deps_mod, diff, hook, init_hook as init_hook_mod, inspect as inspect_mod, manifest, preflight as preflight_mod
+from . import audit, cache as cache_mod, deps as deps_mod, diff, egress as egress_mod, hook, init_hook as init_hook_mod, inspect as inspect_mod, manifest, preflight as preflight_mod
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -27,9 +27,28 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_tree(sub)
     _add_library(sub)
     _add_cache(sub)
+    _add_egress(sub)
     _add_init_hook(sub)
     _add_hook_bash(sub)
     return parser
+
+
+def _add_egress(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser("egress", help="Print an egress profile for a baselined package (for runtime-gate consumers).")
+    p.add_argument("spec", help="name or name==version")
+    p.add_argument("--ecosystem", choices=["pypi", "npm"], default="pypi")
+    p.set_defaults(handler=_handle_egress)
+
+
+def _handle_egress(args: argparse.Namespace) -> int:
+    name, _, version = args.spec.partition("==")
+    report = manifest.find_library_entry(name, args.ecosystem, version=version or None)
+    if not report:
+        sys.stderr.write(f"no library entry for {args.spec} ({args.ecosystem}); run `localguard accept` first.\n")
+        return 1
+    profile = egress_mod.profile_from_report(report)
+    _emit_json(profile, pretty=True)
+    return 0
 
 
 def _add_cache(sub: argparse._SubParsersAction) -> None:

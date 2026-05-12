@@ -7,6 +7,7 @@ from typing import Any
 
 class SurfaceKind(str, Enum):
     OUTBOUND_NETWORK = "outbound_network"
+    OUTBOUND_DYNAMIC = "outbound_dynamic"
     LISTENING_PORT = "listening_port"
     SUBPROCESS = "subprocess"
     FS_WRITE = "fs_write"

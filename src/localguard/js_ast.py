@@ -141,8 +141,9 @@ def _check_call(call_node, source_bytes: bytes, rel: str, aliases: dict[str, str
         name = _text(fn_node, source_bytes)
         kind = _classify_bare(name)
         if kind:
-            findings.append(_finding(kind, rel, line, detail, {"fqn": name}))
-            if kind == SurfaceKind.OUTBOUND_NETWORK:
+            actual_kind, extras = _refine_egress(kind, args_node, source_bytes, {"fqn": name})
+            findings.append(_finding(actual_kind, rel, line, detail, extras))
+            if actual_kind in {SurfaceKind.OUTBOUND_NETWORK, SurfaceKind.OUTBOUND_DYNAMIC}:
                 _check_exfil(args_node, source_bytes, rel, line, findings)
         return
     if fn_node.type == "member_expression":
@@ -156,9 +157,43 @@ def _check_call(call_node, source_bytes: bytes, rel: str, aliases: dict[str, str
         if module:
             kind = _classify_member(module, prop)
             if kind:
-                findings.append(_finding(kind, rel, line, detail, {"fqn": f"{module}.{prop}"}))
-                if kind == SurfaceKind.OUTBOUND_NETWORK:
+                actual_kind, extras = _refine_egress(kind, args_node, source_bytes, {"fqn": f"{module}.{prop}"})
+                findings.append(_finding(actual_kind, rel, line, detail, extras))
+                if actual_kind in {SurfaceKind.OUTBOUND_NETWORK, SurfaceKind.OUTBOUND_DYNAMIC}:
                     _check_exfil(args_node, source_bytes, rel, line, findings)
+
+
+def _refine_egress(kind: SurfaceKind, args_node, source_bytes: bytes, base_extra: dict) -> tuple[SurfaceKind, dict]:
+    if kind != SurfaceKind.OUTBOUND_NETWORK:
+        return kind, base_extra
+    host = _extract_static_host_js(args_node, source_bytes)
+    extras = dict(base_extra)
+    if host:
+        extras["host"] = host
+        return SurfaceKind.OUTBOUND_NETWORK, extras
+    extras["host"] = None
+    return SurfaceKind.OUTBOUND_DYNAMIC, extras
+
+
+def _extract_static_host_js(args_node, source_bytes: bytes) -> str | None:
+    if args_node is None or not args_node.named_children:
+        return None
+    first = args_node.named_children[0]
+    if first.type != "string":
+        return None
+    raw = _string_literal(first, source_bytes)
+    if not raw:
+        return None
+    return _host_from_url_js(raw)
+
+
+def _host_from_url_js(url: str) -> str | None:
+    from urllib.parse import urlparse
+    try:
+        parsed = urlparse(url)
+    except ValueError:
+        return None
+    return parsed.hostname or None
 
 
 def _check_env_secret(member_node, source_bytes: bytes, rel: str, findings: list[Finding]) -> None:
