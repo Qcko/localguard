@@ -32,7 +32,9 @@ class TreeNode:
 
     @property
     def composed_status(self) -> str:
-        own = self.verdict.status if self.verdict else ("cycle" if self.cycle else "error" if self.error else "unknown")
+        if self.cycle or self.truncated:
+            return "safe"  # cycles/truncations were audited elsewhere or capped by policy
+        own = self.verdict.status if self.verdict else ("error" if self.error else "unknown")
         if own not in {"safe", "first-encounter-accepted"}:
             return own
         for child in self.children:

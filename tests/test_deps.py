@@ -151,6 +151,18 @@ def test_audit_tree_auto_baselines_clean_high_score_nodes(tmp_path: Path, monkey
     assert manifest.latest_known_good("child", "pypi", library_root=tmp_path / "lib") is not None
 
 
+def test_cycles_do_not_propagate_as_blockers(tmp_path: Path, monkeypatch):
+    _seed_pkg(tmp_path, "a", "1.0", deps=["b"])
+    _seed_pkg(tmp_path, "b", "1.0", deps=["a"])
+    _baseline_all(tmp_path, ["a==1.0", "b==1.0"])
+    _stub_latest(monkeypatch, {"a": "1.0", "b": "1.0"})
+
+    node = deps.audit_tree("a==1.0", cache_root=tmp_path / "cache", library_root=tmp_path / "lib")
+
+    assert node.composed_status == "safe"
+    assert node.blocked is False
+
+
 def test_audit_tree_detects_cycle(tmp_path: Path, monkeypatch):
     _seed_pkg(tmp_path, "a", "1.0", deps=["b"])
     _seed_pkg(tmp_path, "b", "1.0", deps=["a"])
