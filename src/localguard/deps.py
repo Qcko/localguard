@@ -12,6 +12,13 @@ from . import fetch, inspect as inspect_mod, preflight as preflight_mod
 DEFAULT_MAX_DEPTH = 5
 
 
+def _format_spec(spec: "fetch.PackageSpec") -> str:
+    if not spec.version:
+        return spec.name
+    separator = "@" if spec.ecosystem == "npm" else "=="
+    return f"{spec.name}{separator}{spec.version}"
+
+
 @dataclass
 class TreeNode:
     name: str
@@ -50,7 +57,7 @@ def audit_tree(raw_spec: str, ecosystem: str | None = None, *, max_depth: int = 
         return TreeNode(name=spec.name, version=spec.version, ecosystem=spec.ecosystem, cycle=True)
     visited.add(key)
     try:
-        report, _spec_back, audit_root = inspect_mod.inspect(f"{spec.name}=={spec.version}" if spec.version else spec.name, ecosystem=spec.ecosystem, cache_root=cache_root)
+        report, _spec_back, audit_root = inspect_mod.inspect(_format_spec(spec), ecosystem=spec.ecosystem, cache_root=cache_root)
     except Exception as exc:
         return TreeNode(name=spec.name, version=spec.version, ecosystem=spec.ecosystem, error=str(exc))
     verdict = preflight_mod.verdict_for_report(report.to_dict(), spec, library_root=library_root)

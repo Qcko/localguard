@@ -254,7 +254,8 @@ def _handle_accept_with_deps(args: argparse.Namespace) -> int:
             return 1
     written: list[str] = []
     for n in pending:
-        report_dict, _spec_back, _root = inspect_mod.inspect(f"{n.name}=={n.version}", ecosystem=n.ecosystem)
+        sep = "@" if n.ecosystem == "npm" else "=="
+        report_dict, _spec_back, _root = inspect_mod.inspect(f"{n.name}{sep}{n.version}", ecosystem=n.ecosystem)
         path = manifest.write_library_entry(report_dict.to_dict())
         written.append(str(path))
     sys.stdout.write(f"baselined {len(written)} entries:\n")

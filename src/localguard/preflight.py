@@ -87,7 +87,9 @@ def _first_encounter_verdict(report_dict, spec, score, min_score, accept_new, au
         return Verdict(status="low-score", spec_name=spec.name, spec_version=spec.version, ecosystem=spec.ecosystem, score=score, reasons=reasons)
     auto = accept_new or score >= auto_accept_score
     if not auto:
-        reasons.append(f"first encounter — review and run `localguard accept {spec.name}{('==' + spec.version) if spec.version else ''}` to baseline it")
+        sep = "@" if spec.ecosystem == "npm" else "=="
+        spec_str = f"{spec.name}{sep}{spec.version}" if spec.version else spec.name
+        reasons.append(f"first encounter -- review and run `localguard accept {spec_str}` to baseline it")
         return Verdict(status="first-encounter-needs-accept", spec_name=spec.name, spec_version=spec.version, ecosystem=spec.ecosystem, score=score, reasons=reasons)
     manifest.write_library_entry(report_dict, library_root=library_root)
     if accept_new:
