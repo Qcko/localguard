@@ -21,10 +21,24 @@ def test_preflight_first_encounter_blocks_without_accept_new(tmp_path: Path):
     library_root = tmp_path / "lib"
     _seed_cache(cache_root, FIXTURES / "clean_pkg", "clean-pkg", "0.1.0")
 
-    verdict = preflight.preflight("clean-pkg==0.1.0", cache_root=cache_root, library_root=library_root)
+    verdict = preflight.preflight("clean-pkg==0.1.0", cache_root=cache_root, library_root=library_root, auto_accept_score=101)
 
     assert not verdict.safe
     assert verdict.status == "first-encounter-needs-accept"
+
+
+def test_preflight_auto_baselines_high_score_first_encounter(tmp_path: Path):
+    cache_root = tmp_path / "cache"
+    library_root = tmp_path / "lib"
+    _seed_cache(cache_root, FIXTURES / "clean_pkg", "clean-pkg", "0.1.0")
+
+    verdict = preflight.preflight("clean-pkg==0.1.0", cache_root=cache_root, library_root=library_root)
+
+    assert verdict.safe
+    assert verdict.status == "first-encounter-accepted"
+    assert verdict.score >= 90
+    assert manifest.latest_known_good("clean-pkg", "pypi", library_root=library_root) is not None
+    assert any("auto-baselined" in r for r in verdict.reasons)
 
 
 def test_preflight_first_encounter_accepts_and_pins(tmp_path: Path):

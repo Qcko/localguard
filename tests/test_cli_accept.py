@@ -1,7 +1,7 @@
 import tarfile
 from pathlib import Path
 
-from localguard import cli, fetch, manifest
+from localguard import cli, fetch, manifest, preflight
 
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -38,6 +38,7 @@ def test_accept_with_deps_baselines_closure(tmp_path, monkeypatch, capsys):
     _seed_synthetic(tmp_path, "child", "2.0", deps=[])
     _patch_roots(monkeypatch, tmp_path)
     _stub_latest(monkeypatch, {"child": "2.0"})
+    monkeypatch.setattr(preflight, "DEFAULT_AUTO_ACCEPT_SCORE", 101)
 
     rc = cli.main(["accept", "parent==1.0", "--with-deps", "--yes"])
 
@@ -56,6 +57,7 @@ def test_accept_with_deps_refuses_on_low_score(tmp_path, monkeypatch, capsys):
     _seed_tarball(tmp_path, "nasty", "0.2.0", FIXTURES / "tampered_v2")
     _patch_roots(monkeypatch, tmp_path)
     _stub_latest(monkeypatch, {"nasty": "0.2.0"})
+    monkeypatch.setattr(preflight, "DEFAULT_AUTO_ACCEPT_SCORE", 101)
 
     rc = cli.main(["accept", "parent==1.0", "--with-deps", "--yes"])
 

@@ -97,6 +97,7 @@ def test_hook_fails_closed_on_preflight_exception(monkeypatch):
 def test_hook_strict_mode_blocks_first_encounter(tmp_path, monkeypatch):
     _seed_cache_only(tmp_path, "clean-pkg", "0.1.0", FIXTURES / "clean_pkg")
     _patch_roots(monkeypatch, tmp_path)
+    monkeypatch.setattr(preflight, "DEFAULT_AUTO_ACCEPT_SCORE", 101)
     payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "pip install clean-pkg==0.1.0"}})
     code, out, err = hook.render_to_string(payload)
     assert code == 2
@@ -121,6 +122,7 @@ def test_hook_blocks_via_unknown_transitive_dep(tmp_path, monkeypatch):
     _seed_synthetic_dep(tmp_path, "mystery-dep", "0.1", deps=[])
     _patch_roots(monkeypatch, tmp_path)
     monkeypatch.setattr(fetch, "resolve_latest_version", lambda name, ecosystem: "0.1" if name == "mystery-dep" else None)
+    monkeypatch.setattr(preflight, "DEFAULT_AUTO_ACCEPT_SCORE", 101)
 
     payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "pip install parent-pkg==1.0"}})
     code, _out, err = hook.render_to_string(payload)

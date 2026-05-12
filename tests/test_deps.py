@@ -3,7 +3,7 @@ import tarfile
 import textwrap
 from pathlib import Path
 
-from localguard import deps, fetch, manifest
+from localguard import deps, fetch, manifest, preflight
 
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -103,12 +103,27 @@ def test_audit_tree_blocks_via_unknown_child(tmp_path: Path, monkeypatch):
     _seed_pkg(tmp_path, "unknown-dep", "2.0", deps=[])
     _baseline_all(tmp_path, ["parent==1.0"])
     _stub_latest(monkeypatch, {"unknown-dep": "2.0"})
+    monkeypatch.setattr(preflight, "DEFAULT_AUTO_ACCEPT_SCORE", 101)
 
     node = deps.audit_tree("parent==1.0", cache_root=tmp_path / "cache", library_root=tmp_path / "lib")
 
     assert node.verdict.safe
     assert node.blocked is True
     assert node.composed_status.startswith("blocked-via:unknown-dep")
+
+
+def test_audit_tree_auto_baselines_clean_high_score_nodes(tmp_path: Path, monkeypatch):
+    _seed_pkg(tmp_path, "parent", "1.0", deps=["child"])
+    _seed_pkg(tmp_path, "child", "2.0", deps=[])
+    _stub_latest(monkeypatch, {"child": "2.0"})
+
+    node = deps.audit_tree("parent==1.0", cache_root=tmp_path / "cache", library_root=tmp_path / "lib")
+
+    assert node.composed_status == "safe"
+    assert node.verdict.status == "first-encounter-accepted"
+    assert node.children[0].verdict.status == "first-encounter-accepted"
+    assert manifest.latest_known_good("parent", "pypi", library_root=tmp_path / "lib") is not None
+    assert manifest.latest_known_good("child", "pypi", library_root=tmp_path / "lib") is not None
 
 
 def test_audit_tree_detects_cycle(tmp_path: Path, monkeypatch):

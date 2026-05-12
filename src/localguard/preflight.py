@@ -8,6 +8,7 @@ from . import diff, fetch, inspect, manifest
 
 
 DEFAULT_MIN_SCORE = 50
+DEFAULT_AUTO_ACCEPT_SCORE = 90
 HIGH_RISK_KINDS = {
     "outbound_network",
     "listening_port",
@@ -59,33 +60,40 @@ def preflight(
     *,
     min_score: int = DEFAULT_MIN_SCORE,
     accept_new: bool = False,
+    auto_accept_score: int = DEFAULT_AUTO_ACCEPT_SCORE,
     cache_root: Path | None = None,
     library_root: Path | None = None,
 ) -> Verdict:
     cache_root = cache_root or fetch.DEFAULT_CACHE_ROOT
     report, spec, _ = inspect.inspect(raw_spec, ecosystem=ecosystem, cache_root=cache_root)
-    return verdict_for_report(report.to_dict(), spec, min_score=min_score, accept_new=accept_new, library_root=library_root)
+    return verdict_for_report(report.to_dict(), spec, min_score=min_score, accept_new=accept_new, auto_accept_score=auto_accept_score, library_root=library_root)
 
 
-def verdict_for_report(report_dict: dict, spec: fetch.PackageSpec, *, min_score: int = DEFAULT_MIN_SCORE, accept_new: bool = False, library_root: Path | None = None) -> Verdict:
+def verdict_for_report(report_dict: dict, spec: fetch.PackageSpec, *, min_score: int | None = None, accept_new: bool = False, auto_accept_score: int | None = None, library_root: Path | None = None) -> Verdict:
     library_root = library_root or manifest.DEFAULT_LIBRARY_ROOT
+    min_score = DEFAULT_MIN_SCORE if min_score is None else min_score
+    auto_accept_score = DEFAULT_AUTO_ACCEPT_SCORE if auto_accept_score is None else auto_accept_score
     score = (report_dict.get("score") or {}).get("final_score") or 0
     baseline = manifest.latest_known_good(spec.name, spec.ecosystem, library_root=library_root)
     if baseline is None:
-        return _first_encounter_verdict(report_dict, spec, score, min_score, accept_new, library_root)
+        return _first_encounter_verdict(report_dict, spec, score, min_score, accept_new, auto_accept_score, library_root)
     return _diff_verdict(report_dict, baseline, spec, score, min_score)
 
 
-def _first_encounter_verdict(report_dict, spec, score, min_score, accept_new, library_root) -> Verdict:
+def _first_encounter_verdict(report_dict, spec, score, min_score, accept_new, auto_accept_score, library_root) -> Verdict:
     reasons: list[str] = ["no prior baseline in library"]
     if score < min_score:
         reasons.append(f"score {score} below threshold {min_score}")
         return Verdict(status="low-score", spec_name=spec.name, spec_version=spec.version, ecosystem=spec.ecosystem, score=score, reasons=reasons)
-    if not accept_new:
+    auto = accept_new or score >= auto_accept_score
+    if not auto:
         reasons.append(f"first encounter — review and run `localguard accept {spec.name}{('==' + spec.version) if spec.version else ''}` to baseline it")
         return Verdict(status="first-encounter-needs-accept", spec_name=spec.name, spec_version=spec.version, ecosystem=spec.ecosystem, score=score, reasons=reasons)
     manifest.write_library_entry(report_dict, library_root=library_root)
-    reasons.append("pinned into library as new baseline")
+    if accept_new:
+        reasons.append("pinned into library as new baseline")
+    else:
+        reasons.append(f"auto-baselined (score {score} >= {auto_accept_score})")
     return Verdict(status="first-encounter-accepted", spec_name=spec.name, spec_version=spec.version, ecosystem=spec.ecosystem, score=score, reasons=reasons)
 
 
