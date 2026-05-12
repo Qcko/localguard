@@ -73,6 +73,72 @@ def library_lookup(target_hash: str, name: str | None, ecosystem: str, library_r
     return None
 
 
+def iter_library(library_root: Path | None = None, ecosystem: str | None = None) -> list[dict]:
+    library_root = library_root or DEFAULT_LIBRARY_ROOT
+    if not library_root.exists():
+        return []
+    ecosystems = [ecosystem] if ecosystem else [d.name for d in library_root.iterdir() if d.is_dir()]
+    rows: list[dict] = []
+    for eco in ecosystems:
+        eco_root = library_root / eco
+        if not eco_root.exists():
+            continue
+        for name_dir in sorted(eco_root.iterdir()):
+            index = _read_json(name_dir / "_index.json")
+            if not index:
+                continue
+            for entry in index.get("entries", []):
+                rows.append({
+                    "name": index.get("name") or name_dir.name,
+                    "ecosystem": eco,
+                    "version": entry.get("version"),
+                    "target_hash": entry.get("target_hash"),
+                    "audited_at": entry.get("audited_at"),
+                    "score": entry.get("score"),
+                })
+    return rows
+
+
+def find_library_entry(name: str, ecosystem: str, version: str | None = None, library_root: Path | None = None) -> dict | None:
+    library_root = library_root or DEFAULT_LIBRARY_ROOT
+    name_root = library_root / ecosystem / name
+    index = _read_json(name_root / "_index.json")
+    if not index:
+        return None
+    entries = index.get("entries", [])
+    if version:
+        entries = [e for e in entries if e.get("version") == version]
+    if not entries:
+        return None
+    meta = entries[-1]
+    return _read_json(name_root / meta["version"] / f"{meta['target_hash']}.json")
+
+
+def remove_library_entry(name: str, ecosystem: str, version: str, library_root: Path | None = None) -> bool:
+    library_root = library_root or DEFAULT_LIBRARY_ROOT
+    name_root = library_root / ecosystem / name
+    index_path = name_root / "_index.json"
+    index = _read_json(index_path)
+    if not index:
+        return False
+    before = len(index.get("entries", []))
+    index["entries"] = [e for e in index.get("entries", []) if e.get("version") != version]
+    if len(index["entries"]) == before:
+        return False
+    version_dir = name_root / version
+    if version_dir.exists():
+        for report_file in version_dir.glob("*.json"):
+            report_file.unlink()
+        version_dir.rmdir()
+    if index["entries"]:
+        _write_json(index_path, index)
+    else:
+        index_path.unlink()
+        if name_root.exists() and not any(name_root.iterdir()):
+            name_root.rmdir()
+    return True
+
+
 def _bucket_for(report: dict[str, Any], library_root: Path) -> Path:
     ecosystem = report.get("ecosystem") or "unknown"
     name = report.get("name") or "unnamed"

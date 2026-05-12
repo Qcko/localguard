@@ -25,8 +25,75 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_accept(sub)
     _add_deps(sub)
     _add_tree(sub)
+    _add_library(sub)
     _add_hook_bash(sub)
     return parser
+
+
+def _add_library(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser("library", help="Inspect or prune the baselined-package library.")
+    lib_sub = p.add_subparsers(dest="library_command", required=True)
+
+    p_list = lib_sub.add_parser("list", help="List every baselined package (newest first).")
+    p_list.add_argument("--ecosystem", choices=["pypi", "npm"], default=None)
+    p_list.add_argument("--json", action="store_true")
+    p_list.set_defaults(handler=_handle_library_list)
+
+    p_show = lib_sub.add_parser("show", help="Show a baselined package's full report.")
+    p_show.add_argument("spec", help="name or name==version")
+    p_show.add_argument("--ecosystem", choices=["pypi", "npm"], default="pypi")
+    p_show.set_defaults(handler=_handle_library_show)
+
+    p_forget = lib_sub.add_parser("forget", help="Remove a baselined entry (so the next install must re-accept).")
+    p_forget.add_argument("spec", help="name==version")
+    p_forget.add_argument("--ecosystem", choices=["pypi", "npm"], default="pypi")
+    p_forget.add_argument("--yes", action="store_true")
+    p_forget.set_defaults(handler=_handle_library_forget)
+
+
+def _handle_library_list(args: argparse.Namespace) -> int:
+    rows = manifest.iter_library(ecosystem=args.ecosystem)
+    rows.sort(key=lambda r: (r.get("audited_at") or ""), reverse=True)
+    if args.json:
+        _emit_json(rows, pretty=True)
+        return 0
+    if not rows:
+        sys.stdout.write("(library is empty)\n")
+        return 0
+    sys.stdout.write(f"{'PACKAGE':<40} {'VERSION':<16} {'ECO':<6} {'SCORE':<6} AUDITED\n")
+    for r in rows:
+        sys.stdout.write(f"{r['name']:<40} {str(r.get('version') or '?'):<16} {r['ecosystem']:<6} {str(r.get('score') or '?'):<6} {r.get('audited_at') or '?'}\n")
+    sys.stdout.write(f"\n{len(rows)} entries\n")
+    return 0
+
+
+def _handle_library_show(args: argparse.Namespace) -> int:
+    name, _, version = args.spec.partition("==")
+    report = manifest.find_library_entry(name, args.ecosystem, version=version or None)
+    if not report:
+        sys.stderr.write(f"no library entry for {args.spec} ({args.ecosystem})\n")
+        return 1
+    _emit_json(report, pretty=True)
+    return 0
+
+
+def _handle_library_forget(args: argparse.Namespace) -> int:
+    name, _, version = args.spec.partition("==")
+    if not version:
+        sys.stderr.write("forget requires name==version\n")
+        return 2
+    if not args.yes:
+        sys.stdout.write(f"Remove library baseline for {name}=={version} ({args.ecosystem})? Type 'forget' to confirm: ")
+        sys.stdout.flush()
+        if sys.stdin.readline().strip().lower() != "forget":
+            sys.stdout.write("aborted\n")
+            return 1
+    removed = manifest.remove_library_entry(name, args.ecosystem, version)
+    if not removed:
+        sys.stderr.write(f"no entry found for {name}=={version} ({args.ecosystem})\n")
+        return 1
+    sys.stdout.write(f"removed {name}=={version} ({args.ecosystem})\n")
+    return 0
 
 
 def _add_deps(sub: argparse._SubParsersAction) -> None:

@@ -17,7 +17,18 @@
       "Bash(/e/uv/tools/bin/localguard.exe hook-bash *)",
       "Bash(echo \"exit: $?\")",
       "Bash(uv run *)",
-      "Bash(git commit -m ' *)"
+      "Bash(git commit -m ' *)",
+      "Bash(git fetch *)",
+      "Bash(git -C E:/dev/localguard status --short)",
+      "Bash(git -C E:/dev/localguard rev-parse --abbrev-ref HEAD)",
+      "Bash(git -C E:/dev/localguard merge --ff-only claude/objective-mcclintock-cbbf18)",
+      "Bash(git -C E:/dev/localguard push origin master)",
+      "Bash(git -C E:/dev/localguard branch -d claude/objective-mcclintock-cbbf18)",
+      "Bash(git -C E:/dev/localguard push origin --delete claude/objective-mcclintock-cbbf18)",
+      "Bash(git -C E:/dev/localguard log --oneline -5)",
+      "Bash(git -C E:/dev/localguard status)",
+      "Bash(ls ~/.claude/skills 2>&1 | head -20)",
+      "Bash(mkdir -p ~/.claude/skills/localguard-review)"
     ]
   }
 }
