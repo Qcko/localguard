@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from functools import lru_cache
 from pathlib import Path
 
@@ -13,8 +14,13 @@ OBFUSCATION_BARE_CALLS = {"eval", "Function"}
 
 NETWORK_MODULES = {"http", "https", "node:http", "node:https", "node-fetch", "undici", "got", "axios", "request", "needle", "superagent"}
 SUBPROCESS_MODULES = {"child_process", "node:child_process"}
+FS_MODULES = {"fs", "node:fs", "fs/promises", "node:fs/promises", "fs-extra", "graceful-fs"}
 NETWORK_METHODS = {"request", "get", "post", "put", "patch", "delete", "head", "options", "fetch"}
 SUBPROCESS_METHODS = {"exec", "execSync", "spawn", "spawnSync", "fork", "execFile", "execFileSync"}
+FS_WRITE_METHODS = {"writeFile", "writeFileSync", "appendFile", "appendFileSync", "createWriteStream", "outputFile", "outputFileSync", "writeJson", "writeJsonSync"}
+
+SECRET_NAME_PATTERN = re.compile(r"(API[_-]?KEY|TOKEN|SECRET|PASSWORD|PASSWD|PRIVATE[_-]?KEY|CREDENTIAL)", re.IGNORECASE)
+SENSITIVE_VAR_HINT = re.compile(r"(token|secret|password|api[_-]?key|credential|cookie|session|auth)", re.IGNORECASE)
 
 
 def audit_js(source: SourceFile) -> list[Finding]:
@@ -120,6 +126,8 @@ def _walk(node, source_bytes: bytes, rel: str, aliases: dict[str, str], findings
             _check_call(child, source_bytes, rel, aliases, findings)
         elif child.type == "new_expression":
             _check_new(child, source_bytes, rel, findings)
+        elif child.type == "member_expression":
+            _check_env_secret(child, source_bytes, rel, findings)
 
 
 def _check_call(call_node, source_bytes: bytes, rel: str, aliases: dict[str, str], findings: list[Finding]) -> None:
@@ -128,14 +136,20 @@ def _check_call(call_node, source_bytes: bytes, rel: str, aliases: dict[str, str
         return
     line = call_node.start_point[0] + 1
     detail = _truncate(_text(call_node, source_bytes), 200)
+    args_node = call_node.child_by_field_name("arguments")
     if fn_node.type == "identifier":
         name = _text(fn_node, source_bytes)
         kind = _classify_bare(name)
         if kind:
             findings.append(_finding(kind, rel, line, detail, {"fqn": name}))
+            if kind == SurfaceKind.OUTBOUND_NETWORK:
+                _check_exfil(args_node, source_bytes, rel, line, findings)
         return
     if fn_node.type == "member_expression":
         obj, prop = _member_parts(fn_node, source_bytes)
+        if prop == "listen" and _looks_like_listen(args_node):
+            findings.append(_finding(SurfaceKind.LISTENING_PORT, rel, line, detail, {"fqn": f"{obj or '?'}.listen"}))
+            return
         if obj is None or prop is None:
             return
         module = aliases.get(obj)
@@ -143,6 +157,56 @@ def _check_call(call_node, source_bytes: bytes, rel: str, aliases: dict[str, str
             kind = _classify_member(module, prop)
             if kind:
                 findings.append(_finding(kind, rel, line, detail, {"fqn": f"{module}.{prop}"}))
+                if kind == SurfaceKind.OUTBOUND_NETWORK:
+                    _check_exfil(args_node, source_bytes, rel, line, findings)
+
+
+def _check_env_secret(member_node, source_bytes: bytes, rel: str, findings: list[Finding]) -> None:
+    obj_node = member_node.child_by_field_name("object")
+    prop_node = member_node.child_by_field_name("property")
+    if obj_node is None or prop_node is None:
+        return
+    if obj_node.type != "member_expression":
+        return
+    inner_obj = obj_node.child_by_field_name("object")
+    inner_prop = obj_node.child_by_field_name("property")
+    if inner_obj is None or inner_prop is None:
+        return
+    if _text(inner_obj, source_bytes) != "process" or _text(inner_prop, source_bytes) != "env":
+        return
+    name = _text(prop_node, source_bytes)
+    if not SECRET_NAME_PATTERN.search(name):
+        return
+    line = member_node.start_point[0] + 1
+    findings.append(_finding(SurfaceKind.ENV_SECRET_READ, rel, line, f"process.env.{name}", {"env_name": name}))
+
+
+def _looks_like_listen(args_node) -> bool:
+    if args_node is None:
+        return False
+    for arg in args_node.named_children:
+        if arg.type in {"number", "identifier", "binary_expression", "template_string"}:
+            return True
+    return False
+
+
+def _check_exfil(args_node, source_bytes: bytes, rel: str, line: int, findings: list[Finding]) -> None:
+    if args_node is None:
+        return
+    if not _args_reference_sensitive(args_node, source_bytes):
+        return
+    findings.append(_finding(SurfaceKind.DATA_EXFIL_HINT, rel, line, "network call with sensitive identifier in args", {}, confidence=Confidence.TRACED))
+
+
+def _args_reference_sensitive(args_node, source_bytes: bytes) -> bool:
+    for descendant in _walk_all(args_node):
+        if descendant.type == "property_identifier" and SENSITIVE_VAR_HINT.search(_text(descendant, source_bytes)):
+            return True
+        if descendant.type == "identifier" and SENSITIVE_VAR_HINT.search(_text(descendant, source_bytes)):
+            return True
+        if descendant.type in {"string_fragment", "shorthand_property_identifier"} and SENSITIVE_VAR_HINT.search(_text(descendant, source_bytes)):
+            return True
+    return False
 
 
 def _check_new(new_node, source_bytes: bytes, rel: str, findings: list[Finding]) -> None:
@@ -171,6 +235,8 @@ def _classify_member(module: str, method: str) -> SurfaceKind | None:
         return SurfaceKind.SUBPROCESS
     if module in NETWORK_MODULES and method in NETWORK_METHODS:
         return SurfaceKind.OUTBOUND_NETWORK
+    if module in FS_MODULES and method in FS_WRITE_METHODS:
+        return SurfaceKind.FS_WRITE
     return None
 
 
@@ -205,5 +271,5 @@ def _iter(node):
     return node.named_children if hasattr(node, "named_children") else node.children
 
 
-def _finding(kind: SurfaceKind, rel: str, line: int, detail: str, extra: dict) -> Finding:
-    return Finding(kind=kind, file=rel, line=line, detail=detail, confidence=Confidence.LITERAL, extra=extra)
+def _finding(kind: SurfaceKind, rel: str, line: int, detail: str, extra: dict, *, confidence: Confidence = Confidence.LITERAL) -> Finding:
+    return Finding(kind=kind, file=rel, line=line, detail=detail, confidence=confidence, extra=extra)
