@@ -21,7 +21,7 @@ DEFAULT_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.ENV_SECRET_READ: Weight(10, 20),
     SurfaceKind.HARDCODED_HOST: Weight(2, 10),
     SurfaceKind.TELEMETRY_ENDPOINT: Weight(10, 20),
-    SurfaceKind.OBFUSCATION: Weight(25, 50),
+    SurfaceKind.OBFUSCATION: Weight(8, 60),
     SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
     SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
