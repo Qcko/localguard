@@ -9,6 +9,7 @@ from typing import Iterator
 SKIP_DIRS = {".git", ".venv", "venv", "__pycache__", "node_modules", "dist", "build", ".localguard", ".pytest_cache", ".ruff_cache"}
 TEST_DIR_NAMES = {"tests", "test", "testing", "__tests__", "spec", "specs"}
 DOC_DIR_NAMES = {"docs", "doc", "examples", "example", "samples"}
+I18N_DIR_NAMES = {"locales", "locale", "i18n", "lang", "langs", "translations", "messages"}
 PYTHON_SUFFIXES = {".py", ".pyi"}
 JS_SUFFIXES = {".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx"}
 TEXT_SUFFIXES = PYTHON_SUFFIXES | JS_SUFFIXES | {".md", ".txt", ".json", ".toml", ".yaml", ".yml", ".cfg", ".ini"}
@@ -77,6 +78,8 @@ def find_context(rel: str) -> str:
         return "tests"
     if any(p.lower() in DOC_DIR_NAMES for p in parts[:-1]):
         return "docs"
+    if any(p.lower() in I18N_DIR_NAMES for p in parts[:-1]):
+        return "i18n"
     if _is_doc_or_meta_file(name) and len(parts) == 1:
         return "docs"
     if name in {"setup.py", "setup.cfg", "pyproject.toml", "package.json", "manifest.in"} and len(parts) == 1:

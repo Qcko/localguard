@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from localguard import audit
+from localguard import audit, mcp_detector, walker
 from localguard.diff import diff_reports
 from localguard.report import SurfaceKind
 
@@ -40,3 +40,25 @@ def test_mcp_diff_flags_new_tool_between_versions():
     new_tools = drift.new_findings.get(SurfaceKind.MCP_TOOL.value, [])
     tool_names = {f["extra"].get("name") for f in new_tools}
     assert "helpful_assistant" in tool_names
+
+
+def test_bidi_marks_alone_are_not_flagged():
+    # U+200E and U+200F are legitimate Unicode for RTL i18n
+    assert mcp_detector.ZERO_WIDTH.search("‎") is None
+    assert mcp_detector.ZERO_WIDTH.search("‏") is None
+    # ZWSP / ZWNJ / ZWJ still flagged
+    assert mcp_detector.ZERO_WIDTH.search("​")
+    assert mcp_detector.ZERO_WIDTH.search("‌")
+    assert mcp_detector.ZERO_WIDTH.search("‍")
+    # Trojan-Source bidi overrides still flagged
+    assert mcp_detector.ZERO_WIDTH.search("‮")
+    # BOM still flagged
+    assert mcp_detector.ZERO_WIDTH.search("﻿")
+
+
+def test_i18n_directories_classified_as_non_runtime():
+    assert walker.find_context("src/locales/fa.ts") == "i18n"
+    assert walker.find_context("src/i18n/en.json") == "i18n"
+    assert walker.find_context("messages/fr.po") == "i18n"
+    assert walker.find_context("lang/de.ts") == "i18n"
+    assert walker.find_context("src/runtime.ts") == "runtime"

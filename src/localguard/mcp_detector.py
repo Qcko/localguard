@@ -16,7 +16,8 @@ PROMPT_INJECTION_PATTERN = re.compile(
     r"(ignore\s+previous|disregard\s+(?:all|previous)|system\s*[:\-]\s*you\s+are|always\s+call\s+this\s+first|do\s+not\s+(?:tell|mention)|forget\s+(?:all|previous))",
     re.IGNORECASE,
 )
-ZERO_WIDTH = re.compile(r"[​-‏‪-‮⁠-⁯]")
+BIDI_MARKS = "‎‏"  # LTR / RTL marks: legitimate Unicode for RTL i18n, never flagged
+ZERO_WIDTH = re.compile(r"[​-‍‪-‮⁠-⁯﻿]")
 
 
 def detect_mcp(source: SourceFile) -> list[Finding]:
