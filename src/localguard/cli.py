@@ -111,10 +111,14 @@ def _add_accept(sub: argparse._SubParsersAction) -> None:
     p.add_argument("spec")
     p.add_argument("--ecosystem", choices=["pypi", "npm"], default=None)
     p.add_argument("--yes", action="store_true", help="Skip the confirmation prompt.")
+    p.add_argument("--with-deps", action="store_true", help="Recursively audit the dep closure and baseline every acceptable node.")
+    p.add_argument("--max-depth", type=int, default=deps_mod.DEFAULT_MAX_DEPTH)
     p.set_defaults(handler=_handle_accept)
 
 
 def _handle_accept(args: argparse.Namespace) -> int:
+    if args.with_deps:
+        return _handle_accept_with_deps(args)
     report, spec, _ = inspect_mod.inspect(args.spec, ecosystem=args.ecosystem)
     report_dict = report.to_dict()
     score = (report_dict.get("score") or {}).get("final_score")
@@ -131,6 +135,67 @@ def _handle_accept(args: argparse.Namespace) -> int:
     library_path = manifest.write_library_entry(report_dict)
     sys.stdout.write(f"baselined: {library_path}\n")
     return 0
+
+
+def _handle_accept_with_deps(args: argparse.Namespace) -> int:
+    node = deps_mod.audit_tree(args.spec, ecosystem=args.ecosystem, max_depth=args.max_depth)
+    sys.stdout.write(deps_mod.render_tree(node) + "\n")
+    pending, hard_blockers = _classify_tree_for_accept(node)
+    if hard_blockers:
+        sys.stdout.write("\nrefusing: the following nodes are not acceptable via this flow (low-score / drift / error):\n")
+        for n, reason in hard_blockers:
+            sys.stdout.write(f"  - {n.name}=={n.version or '?'} ({n.ecosystem}): {reason}\n")
+        sys.stdout.write("review them manually before retrying.\n")
+        return 1
+    if not pending:
+        sys.stdout.write("\nnothing to accept: every node is already safe or baselined.\n")
+        return 0
+    sys.stdout.write(f"\n{len(pending)} package(s) will be baselined:\n")
+    for n in pending:
+        sys.stdout.write(f"  + {n.name}=={n.version} ({n.ecosystem})\n")
+    if not args.yes:
+        sys.stdout.write("Type 'accept' to baseline all listed packages, anything else to abort: ")
+        sys.stdout.flush()
+        if sys.stdin.readline().strip().lower() != "accept":
+            sys.stdout.write("aborted; no library entries written\n")
+            return 1
+    written: list[str] = []
+    for n in pending:
+        report_dict, _spec_back, _root = inspect_mod.inspect(f"{n.name}=={n.version}", ecosystem=n.ecosystem)
+        path = manifest.write_library_entry(report_dict.to_dict())
+        written.append(str(path))
+    sys.stdout.write(f"baselined {len(written)} entries:\n")
+    for p in written:
+        sys.stdout.write(f"  {p}\n")
+    return 0
+
+
+def _classify_tree_for_accept(node):
+    pending: list = []
+    hard: list = []
+    seen: set = set()
+    for n in _walk(node):
+        if n.cycle or n.truncated:
+            continue
+        key = (n.ecosystem, n.name.lower(), n.version or "")
+        if key in seen:
+            continue
+        seen.add(key)
+        if n.error:
+            hard.append((n, f"error: {n.error}"))
+            continue
+        own = n.verdict.status if n.verdict else None
+        if own == "first-encounter-needs-accept":
+            pending.append(n)
+        elif own in {"low-score", "drift"}:
+            hard.append((n, own))
+    return pending, hard
+
+
+def _walk(node):
+    yield node
+    for c in node.children:
+        yield from _walk(c)
 
 
 def _finding_summary(report_dict: dict) -> str:

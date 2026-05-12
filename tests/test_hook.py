@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from localguard import fetch, hook, preflight
+from localguard import deps, fetch, hook, preflight
 
 
 FIXTURES = Path(__file__).parent / "fixtures"
@@ -86,7 +86,7 @@ def test_hook_allows_safe_install(tmp_path, monkeypatch):
 def test_hook_fails_closed_on_preflight_exception(monkeypatch):
     def boom(*_args, **_kwargs):
         raise RuntimeError("network down")
-    monkeypatch.setattr(preflight, "preflight", boom)
+    monkeypatch.setattr(deps, "audit_tree", boom)
     payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "pip install ghost==9.9.9"}})
     code, _out, err = hook.render_to_string(payload)
     assert code == 2
@@ -113,6 +113,33 @@ def test_hook_blocks_low_score_install(tmp_path, monkeypatch):
     assert code == 2
     assert "BLOCK" in err
     assert "drifty-pkg" in err
+
+
+def test_hook_blocks_via_unknown_transitive_dep(tmp_path, monkeypatch):
+    _seed_local_baseline(tmp_path, "parent-pkg", "1.0", FIXTURES / "clean_pkg")
+    _seed_synthetic_dep(tmp_path, "parent-pkg", "1.0", deps=["mystery-dep"])
+    _seed_synthetic_dep(tmp_path, "mystery-dep", "0.1", deps=[])
+    _patch_roots(monkeypatch, tmp_path)
+    monkeypatch.setattr(fetch, "resolve_latest_version", lambda name, ecosystem: "0.1" if name == "mystery-dep" else None)
+
+    payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": "pip install parent-pkg==1.0"}})
+    code, _out, err = hook.render_to_string(payload)
+
+    assert code == 2
+    assert "blocked-via:mystery-dep" in err
+    assert "mystery-dep" in err
+    assert "accept --with-deps" in err
+
+
+def _seed_synthetic_dep(tmp_path: Path, name: str, version: str, *, deps: list) -> None:
+    src = tmp_path / "cache" / "pypi" / name / version / "src" / f"{name}-{version}"
+    src.mkdir(parents=True, exist_ok=True)
+    deps_str = "[" + ", ".join(f'"{d}"' for d in deps) + "]"
+    (src / "pyproject.toml").write_text(
+        f'[project]\nname = "{name}"\nversion = "{version}"\ndependencies = {deps_str}\n',
+        encoding="utf-8",
+    )
+    (src / "__init__.py").write_text("", encoding="utf-8")
 
 
 def _seed_local_baseline(tmp_path: Path, name: str, version: str, fixture: Path) -> None:

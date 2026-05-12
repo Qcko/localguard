@@ -7,7 +7,7 @@ import sys
 from dataclasses import dataclass
 from io import StringIO
 
-from . import preflight as preflight_mod
+from . import deps as deps_mod
 
 
 SPEC_PATTERN = re.compile(r"^(?:@[A-Za-z0-9._-]+/)?[A-Za-z0-9._-]+(?:[@=]{1,2}[A-Za-z0-9._+\-]+)?$")
@@ -42,20 +42,41 @@ def run_hook(stdin_text: str, stderr=sys.stderr, stdout=sys.stdout) -> int:
     for install in installs:
         for spec in install.specs:
             try:
-                verdict = preflight_mod.preflight(spec, ecosystem=install.ecosystem)
+                node = deps_mod.audit_tree(spec, ecosystem=install.ecosystem)
             except Exception as exc:
                 stderr.write(f"[localguard] BLOCK {spec} ({install.ecosystem}): preflight error: {exc}\n")
                 blockers.append(f"{spec} ({install.ecosystem}): preflight-error")
                 continue
-            line = verdict.human_summary()
-            stream = stdout if verdict.safe else stderr
-            stream.write(line + "\n")
-            if not verdict.safe:
-                blockers.append(f"{spec} ({install.ecosystem}): {verdict.status}")
+            status = node.composed_status
+            if node.blocked:
+                stderr.write(f"[localguard] BLOCK {spec} ({install.ecosystem}) status={status}\n")
+                stderr.write(deps_mod.render_tree(node) + "\n")
+                if _has_only_first_encounter_blockers(node):
+                    stderr.write(f"  -> run `localguard accept --with-deps {spec}` to baseline this closure\n")
+                blockers.append(f"{spec} ({install.ecosystem}): {status}")
+            else:
+                stdout.write(f"[localguard] OK {spec} ({install.ecosystem}) status={status}\n")
     if blockers:
         stderr.write("[localguard] blocked install: " + "; ".join(blockers) + "\n")
         return 2
     return 0
+
+
+def _has_only_first_encounter_blockers(node) -> bool:
+    for n in _walk_tree(node):
+        if n.cycle or n.truncated:
+            continue
+        own = n.verdict.status if n.verdict else None
+        if own in {"safe", "first-encounter-accepted", "first-encounter-needs-accept", None}:
+            continue
+        return False
+    return True
+
+
+def _walk_tree(node):
+    yield node
+    for c in node.children:
+        yield from _walk_tree(c)
 
 
 def extract_installs(command: str) -> list[ExtractedInstall]:

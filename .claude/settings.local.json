@@ -15,7 +15,9 @@
       "Bash(git rm *)",
       "Bash(git -c core.autocrlf=true commit -m 'feat: pre-install gating via Claude Code PreToolUse hook *)",
       "Bash(/e/uv/tools/bin/localguard.exe hook-bash *)",
-      "Bash(echo \"exit: $?\")"
+      "Bash(echo \"exit: $?\")",
+      "Bash(uv run *)",
+      "Bash(git commit -m ' *)"
     ]
   }
 }
