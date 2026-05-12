@@ -40,13 +40,15 @@ def find_pinned_entry(project_root: Path, name: str | None, target_hash: str) ->
     return None
 
 
-def write_library_entry(report: dict[str, Any], library_root: Path | None = None) -> Path:
+def write_library_entry(report: dict[str, Any], library_root: Path | None = None, *, refresh: bool = False) -> Path:
     library_root = library_root or DEFAULT_LIBRARY_ROOT
     bucket = _bucket_for(report, library_root)
     bucket.mkdir(parents=True, exist_ok=True)
     stamped = dict(report)
-    stamped.setdefault("schema_version", SCHEMA_VERSION)
+    stamped["schema_version"] = SCHEMA_VERSION
     stamped.setdefault("baselined_at", _now_iso())
+    if refresh:
+        stamped["refreshed_at"] = _now_iso()
     report_path = bucket / f"{report['target_hash']}.json"
     _write_json(report_path, stamped)
     _update_index(stamped, library_root)

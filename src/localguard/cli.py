@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import audit, cache as cache_mod, deps as deps_mod, diff, egress as egress_mod, hook, init_hook as init_hook_mod, inspect as inspect_mod, manifest, preflight as preflight_mod
+from . import audit, cache as cache_mod, deps as deps_mod, diff, egress as egress_mod, hook, init_hook as init_hook_mod, inspect as inspect_mod, library_refresh as library_refresh_mod, manifest, preflight as preflight_mod
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -116,6 +116,12 @@ def _add_library(sub: argparse._SubParsersAction) -> None:
     p_forget.add_argument("--yes", action="store_true")
     p_forget.set_defaults(handler=_handle_library_forget)
 
+    p_refresh = lib_sub.add_parser("refresh", help="Re-audit every baselined package at its stored version and rewrite the report (use after detector or rubric changes).")
+    p_refresh.add_argument("--ecosystem", choices=["pypi", "npm"], default=None)
+    p_refresh.add_argument("--name", default=None, help="Substring filter on package name.")
+    p_refresh.add_argument("--dry-run", action="store_true")
+    p_refresh.set_defaults(handler=_handle_library_refresh)
+
 
 def _handle_library_list(args: argparse.Namespace) -> int:
     rows = manifest.iter_library(ecosystem=args.ecosystem)
@@ -141,6 +147,22 @@ def _handle_library_show(args: argparse.Namespace) -> int:
         return 1
     _emit_json(report, pretty=True)
     return 0
+
+
+def _handle_library_refresh(args: argparse.Namespace) -> int:
+    def report_outcome(o):
+        if o.status == "refreshed":
+            delta = "" if o.old_score is None or o.new_score is None or o.new_score == o.old_score else f"  (score {o.old_score} -> {o.new_score})"
+            verb = "would refresh" if args.dry_run else "refreshed"
+            sys.stdout.write(f"  {verb}: {o.ecosystem}/{o.name}=={o.version}{delta}\n")
+        elif o.status == "error":
+            sys.stdout.write(f"  SKIPPED: {o.ecosystem}/{o.name}=={o.version} ({o.error})\n")
+    summary = library_refresh_mod.refresh(ecosystem=args.ecosystem, name_pattern=args.name, dry_run=args.dry_run, on_progress=report_outcome)
+    sys.stdout.write(f"\n{summary.refreshed} refreshed, {summary.errors} errors")
+    if args.dry_run:
+        sys.stdout.write("  (dry-run)")
+    sys.stdout.write("\n")
+    return 0 if summary.errors == 0 else 1
 
 
 def _handle_library_forget(args: argparse.Namespace) -> int:
