@@ -55,11 +55,33 @@ def resolve_latest_version(name: str, ecosystem: str) -> str | None:
 
 
 def resolve_matching_version(name: str, ecosystem: str, specifier: str | None) -> str | None:
-    if not specifier or specifier.strip() in {"", "*"}:
+    if not specifier or specifier.strip() in {"", "*", "latest"}:
         return resolve_latest_version(name, ecosystem)
     if ecosystem == "pypi":
         return _resolve_pypi_match(name, specifier)
+    if ecosystem == "npm":
+        return _resolve_npm_match(name, specifier)
     return resolve_latest_version(name, ecosystem)
+
+
+def _resolve_npm_match(name: str, specifier: str) -> str | None:
+    import nodesemver
+    if _looks_like_non_registry_spec(specifier):
+        return resolve_latest_version(name, "npm")
+    data = _http_get_json(f"https://registry.npmjs.org/{name}")
+    versions = list((data.get("versions") or {}).keys())
+    if not versions:
+        return None
+    try:
+        match = nodesemver.max_satisfying(versions, specifier, loose=True)
+    except (ValueError, TypeError):
+        return resolve_latest_version(name, "npm")
+    return match or None
+
+
+def _looks_like_non_registry_spec(specifier: str) -> bool:
+    s = specifier.strip().lower()
+    return s.startswith(("git+", "git:", "http://", "https://", "file:", "npm:")) or "/" in s
 
 
 def _resolve_pypi_match(name: str, specifier: str) -> str | None:

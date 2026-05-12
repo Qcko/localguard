@@ -25,6 +25,7 @@ name = "localguard"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "node-semver" },
     { name = "packaging" },
 ]
 
@@ -35,12 +36,24 @@ dev = [
 ]
 
 [package.metadata]
-requires-dist = [{ name = "packaging", specifier = ">=24.0" }]
+requires-dist = [
+    { name = "node-semver", specifier = ">=0.9.0" },
+    { name = "packaging", specifier = ">=24.0" },
+]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "pytest", specifier = ">=9.0.3" },
     { name = "ruff", specifier = ">=0.15.12" },
+]
+
+[[package]]
+name = "node-semver"
+version = "0.9.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/eb/c5/e823658f716b17ab1c52d68ed13a0e09c0130af052401a26b5738e4290cc/node-semver-0.9.0.tar.gz", hash = "sha256:04aa0b0016dbc06748d6378c42d8cf82a343415bd9fca6284f488041d08b33bb", size = 12632, upload-time = "2023-02-23T14:28:56.834Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/1a/4b/180481021692a76dc91f46fa6a49cdef4c3e630c77a83b7fda3f4eb7aa04/node_semver-0.9.0-py3-none-any.whl", hash = "sha256:8153270903772b1e59500ced6f0aca0f7bdb021651c27584e9283b7077b4916b", size = 12165, upload-time = "2023-02-23T14:28:55.129Z" },
 ]
 
 [[package]]
