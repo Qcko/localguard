@@ -52,6 +52,18 @@ def test_skips_local_path_install():
     assert installs == [] or installs[0].specs == []
 
 
+def test_does_not_capture_packages_from_piped_commands():
+    installs = hook.extract_installs("uv add tree-sitter 2>&1 | tail -10")
+    all_specs = [s for i in installs for s in i.specs]
+    assert all_specs == ["tree-sitter"]
+
+
+def test_stops_at_shell_redirection():
+    installs = hook.extract_installs("pip install requests > /tmp/log.txt")
+    all_specs = [s for i in installs for s in i.specs]
+    assert all_specs == ["requests"]
+
+
 def test_handles_chained_commands():
     installs = hook.extract_installs("uv add fastapi && pip install httpx")
     ecosystems = {i.ecosystem for i in installs}

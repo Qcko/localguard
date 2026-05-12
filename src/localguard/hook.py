@@ -95,8 +95,11 @@ def extract_installs(command: str) -> list[ExtractedInstall]:
 
 
 def _split_chained(command: str) -> list[str]:
-    parts = re.split(r"\s*(?:&&|\|\||;)\s*", command)
+    parts = re.split(r"\s*(?:&&|\|\||\||;)\s*", command)
     return [p.strip() for p in parts if p.strip()]
+
+
+_REDIRECT_TOKEN = re.compile(r"^\d*[<>]+&?\d*$")
 
 
 def _classify(tokens: list[str]) -> ExtractedInstall | None:
@@ -125,6 +128,8 @@ def _specs_after_flags(args: list[str]) -> list[str]:
         if skip_next:
             skip_next = False
             continue
+        if _REDIRECT_TOKEN.match(token):
+            break  # shell redirection — anything after is not pkg args
         if token.startswith("-"):
             if token in {"-r", "--requirement", "-c", "--constraint", "-e", "--editable", "-t", "--target"}:
                 skip_next = True
