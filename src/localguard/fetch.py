@@ -33,6 +33,7 @@ class FetchError(RuntimeError):
 def fetch_package(spec: PackageSpec, cache_root: Path = DEFAULT_CACHE_ROOT) -> Path:
     dest = _cache_dir(spec, cache_root)
     if _has_unpacked_contents(dest):
+        _touch_cache_entry(dest)
         return dest
     dest.mkdir(parents=True, exist_ok=True)
     if spec.ecosystem == "pypi":
@@ -146,6 +147,17 @@ def _split_pypi(raw: str) -> tuple[str, str | None]:
 
 def _cache_dir(spec: PackageSpec, cache_root: Path) -> Path:
     return cache_root / spec.ecosystem / spec.name / (spec.version or "unversioned") / "src"
+
+
+def _touch_cache_entry(src_dir: Path) -> None:
+    import os, time
+    version_dir = src_dir.parent
+    if version_dir.exists():
+        now = time.time()
+        try:
+            os.utime(version_dir, (now, now))
+        except OSError:
+            pass
 
 
 def _has_unpacked_contents(path: Path) -> bool:

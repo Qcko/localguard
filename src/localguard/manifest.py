@@ -9,6 +9,7 @@ from typing import Any
 
 PROJECT_DIR_NAME = ".localguard"
 PINNED_FILENAME = "pinned.json"
+SCHEMA_VERSION = 1
 DEFAULT_LIBRARY_ROOT = Path(os.environ.get("LOCALGUARD_LIBRARY") or r"E:\localguard\library")
 
 
@@ -43,9 +44,12 @@ def write_library_entry(report: dict[str, Any], library_root: Path | None = None
     library_root = library_root or DEFAULT_LIBRARY_ROOT
     bucket = _bucket_for(report, library_root)
     bucket.mkdir(parents=True, exist_ok=True)
+    stamped = dict(report)
+    stamped.setdefault("schema_version", SCHEMA_VERSION)
+    stamped.setdefault("baselined_at", _now_iso())
     report_path = bucket / f"{report['target_hash']}.json"
-    _write_json(report_path, report)
-    _update_index(report, library_root)
+    _write_json(report_path, stamped)
+    _update_index(stamped, library_root)
     return report_path
 
 

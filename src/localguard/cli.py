@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import audit, deps as deps_mod, diff, hook, init_hook as init_hook_mod, inspect as inspect_mod, manifest, preflight as preflight_mod
+from . import audit, cache as cache_mod, deps as deps_mod, diff, hook, init_hook as init_hook_mod, inspect as inspect_mod, manifest, preflight as preflight_mod
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -26,9 +26,31 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_deps(sub)
     _add_tree(sub)
     _add_library(sub)
+    _add_cache(sub)
     _add_init_hook(sub)
     _add_hook_bash(sub)
     return parser
+
+
+def _add_cache(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser("cache", help="Inspect or prune LocalGuard's fetched-package cache.")
+    cache_sub = p.add_subparsers(dest="cache_command", required=True)
+    p_prune = cache_sub.add_parser("prune", help="Remove cached source trees that haven't been audited recently.")
+    p_prune.add_argument("--older-than", type=int, default=cache_mod.DEFAULT_PRUNE_DAYS, metavar="DAYS")
+    p_prune.add_argument("--dry-run", action="store_true")
+    p_prune.set_defaults(handler=_handle_cache_prune)
+
+
+def _handle_cache_prune(args: argparse.Namespace) -> int:
+    result = cache_mod.prune(older_than_days=args.older_than, dry_run=args.dry_run)
+    label = "would remove" if args.dry_run else "removed"
+    if not result.candidates:
+        sys.stdout.write(f"nothing older than {args.older_than} days\n")
+        return 0
+    for entry in result.candidates:
+        sys.stdout.write(f"  {label}: {entry.ecosystem}/{entry.name}=={entry.version}  ({entry.size_bytes/1024:.1f} KiB, {entry.age_days:.1f}d old)\n")
+    sys.stdout.write(f"\n{len(result.candidates)} entries, {result.bytes_freed/1024/1024:.1f} MiB {'would be freed' if args.dry_run else 'freed'}\n")
+    return 0
 
 
 def _add_init_hook(sub: argparse._SubParsersAction) -> None:
