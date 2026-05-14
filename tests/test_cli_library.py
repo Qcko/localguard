@@ -25,6 +25,24 @@ def _patch_lib(monkeypatch, library_root: Path) -> None:
     monkeypatch.setattr(cli_mod.manifest, "DEFAULT_LIBRARY_ROOT", library_root)
 
 
+def test_iter_library_finds_scoped_npm_entries(tmp_path):
+    library = tmp_path / "lib"
+    manifest.write_library_entry({
+        "name": "@scope/pkg", "version": "1.0.0", "ecosystem": "npm",
+        "target_hash": "scoped-hash",
+        "score": {"final_score": 95, "deductions": []}, "findings": [],
+    }, library_root=library)
+    manifest.write_library_entry({
+        "name": "bare", "version": "2.0.0", "ecosystem": "npm",
+        "target_hash": "bare-hash",
+        "score": {"final_score": 90, "deductions": []}, "findings": [],
+    }, library_root=library)
+    rows = manifest.iter_library(library_root=library)
+    names = {(r["name"], r["version"]) for r in rows}
+    assert ("@scope/pkg", "1.0.0") in names
+    assert ("bare", "2.0.0") in names
+
+
 def test_library_list_empty(tmp_path, monkeypatch, capsys):
     _patch_lib(monkeypatch, tmp_path / "lib")
     rc = cli.main(["library", "list"])

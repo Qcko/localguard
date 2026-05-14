@@ -89,13 +89,14 @@ def iter_library(library_root: Path | None = None, ecosystem: str | None = None)
         eco_root = library_root / eco
         if not eco_root.exists():
             continue
-        for name_dir in sorted(eco_root.iterdir()):
-            index = _read_json(name_dir / "_index.json")
+        for index_path in sorted(eco_root.rglob("_index.json")):
+            index = _read_json(index_path)
             if not index:
                 continue
+            fallback_name = "/".join(index_path.parent.relative_to(eco_root).parts)
             for entry in index.get("entries", []):
                 rows.append({
-                    "name": index.get("name") or name_dir.name,
+                    "name": index.get("name") or fallback_name,
                     "ecosystem": eco,
                     "version": entry.get("version"),
                     "target_hash": entry.get("target_hash"),
