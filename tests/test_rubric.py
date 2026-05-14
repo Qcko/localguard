@@ -117,6 +117,28 @@ def test_web_server_profile_relaxes_fs_write():
     assert web.final_score > plugin.final_score
 
 
+def test_build_tool_profile_relaxes_subprocess():
+    findings = _surf(SurfaceKind.SUBPROCESS, 5)
+    plugin = rubric.score(findings, profile=rubric.PROFILE_PLUGIN)
+    bt = rubric.score(findings, profile=rubric.PROFILE_BUILD_TOOL)
+    assert plugin.final_score == 100 - 40  # cap 40
+    assert bt.final_score == 100 - 20      # cap 20 under build-tool
+
+
+def test_build_tool_profile_relaxes_fs_write():
+    findings = _surf(SurfaceKind.FS_WRITE, 6)
+    plugin = rubric.score(findings, profile=rubric.PROFILE_PLUGIN)
+    bt = rubric.score(findings, profile=rubric.PROFILE_BUILD_TOOL)
+    assert bt.final_score > plugin.final_score
+
+
+def test_build_tool_profile_stays_strict_on_obfuscation():
+    findings = _surf(SurfaceKind.OBFUSCATION, 10)
+    plugin = rubric.score(findings, profile=rubric.PROFILE_PLUGIN)
+    bt = rubric.score(findings, profile=rubric.PROFILE_BUILD_TOOL)
+    assert plugin.final_score == bt.final_score
+
+
 def test_unknown_profile_falls_back_to_plugin_weights():
     findings = _surf(SurfaceKind.LISTENING_PORT, 5)
     bogus = rubric.score(findings, profile="not-a-real-profile")

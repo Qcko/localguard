@@ -70,6 +70,29 @@ CLI_FRAMEWORK_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
 }
 
+# A Python build backend / packaging tool's purpose is to invoke compilers and
+# linkers (subprocess), write wheels and source distributions to disk
+# (fs_write), and fetch build dependencies / index metadata over the network
+# (outbound, hardcoded_host pointing at pypi.org). Relax those four surfaces.
+# Keep obfuscation strict -- vendored eval in a build tool is the
+# supply-chain holy grail; the cost of false-positives on legacy vendored
+# helpers is the right side of "be paranoid about build infrastructure". Also
+# keep listening_port strict (build tools have no business binding to ports).
+BUILD_TOOL_WEIGHTS: dict[SurfaceKind, Weight] = {
+    SurfaceKind.OUTBOUND_NETWORK: Weight(2, 10),
+    SurfaceKind.OUTBOUND_DYNAMIC: Weight(4, 20),
+    SurfaceKind.LISTENING_PORT: Weight(15, 45),
+    SurfaceKind.SUBPROCESS: Weight(5, 20),
+    SurfaceKind.FS_WRITE: Weight(2, 10),
+    SurfaceKind.ENV_SECRET_READ: Weight(10, 20),
+    SurfaceKind.HARDCODED_HOST: Weight(1, 5),
+    SurfaceKind.TELEMETRY_ENDPOINT: Weight(10, 20),
+    SurfaceKind.OBFUSCATION: Weight(8, 60),
+    SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
+    SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
+    SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+}
+
 # A web server's purpose is to bind to a port, accept connections, fork worker
 # processes (gunicorn/hypercorn), and write logs/pidfiles/unix sockets. Relax
 # listening_port, subprocess, and fs_write. Stay strict on outbound (a web
@@ -117,6 +140,7 @@ PROFILE_MCP_SERVER = "mcp-server"
 PROFILE_CLI_FRAMEWORK = "cli-framework"
 PROFILE_NETWORK_LIBRARY = "network-library"
 PROFILE_WEB_SERVER = "web-server"
+PROFILE_BUILD_TOOL = "build-tool"
 DEFAULT_PROFILE = PROFILE_PLUGIN
 
 PROFILE_WEIGHTS: dict[str, dict[SurfaceKind, Weight]] = {
@@ -125,6 +149,7 @@ PROFILE_WEIGHTS: dict[str, dict[SurfaceKind, Weight]] = {
     PROFILE_CLI_FRAMEWORK: CLI_FRAMEWORK_WEIGHTS,
     PROFILE_NETWORK_LIBRARY: NETWORK_LIBRARY_WEIGHTS,
     PROFILE_WEB_SERVER: WEB_SERVER_WEIGHTS,
+    PROFILE_BUILD_TOOL: BUILD_TOOL_WEIGHTS,
 }
 
 # Backwards-compat alias for any external caller.
@@ -180,6 +205,20 @@ WEB_SERVER_NAMES: set[str] = {
     "uvicorn", "gunicorn", "hypercorn", "granian", "waitress", "daphne",
 }
 
+# Well-known Python build backends and packaging tools. Tight allowlist on
+# purpose. These are transitive deps of essentially every pypi install and the
+# 0-score-blocks-everything outcome under plugin is a real friction point.
+# Canonical (PEP 503) names.
+BUILD_TOOL_NAMES: set[str] = {
+    "setuptools", "wheel", "build", "pip",
+    "hatchling", "hatch", "hatch-vcs", "hatch-fancy-pypi-readme",
+    "flit", "flit-core",
+    "poetry", "poetry-core",
+    "pdm", "pdm-backend",
+    "scikit-build", "scikit-build-core", "meson-python", "maturin",
+    "setuptools-scm", "setuptools-rust",
+}
+
 
 def detect_profile_from_name(name: str, ecosystem: str) -> tuple[str, str] | None:
     """Apply a role profile based on the canonical package name.
@@ -198,6 +237,8 @@ def detect_profile_from_name(name: str, ecosystem: str) -> tuple[str, str] | Non
             return PROFILE_NETWORK_LIBRARY, f"name-allowlist: {name}"
         if name in WEB_SERVER_NAMES:
             return PROFILE_WEB_SERVER, f"name-allowlist: {name}"
+        if name in BUILD_TOOL_NAMES:
+            return PROFILE_BUILD_TOOL, f"name-allowlist: {name}"
         return None
     if ecosystem == "npm":
         if name.startswith("@modelcontextprotocol/server-"):

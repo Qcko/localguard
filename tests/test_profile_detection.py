@@ -120,6 +120,24 @@ def test_uvicorn_gunicorn_etc_detect_as_web_server():
     )
 
 
+def test_setuptools_wheel_etc_detect_as_build_tool():
+    assert rubric.detect_profile_from_name("setuptools", "pypi") == (
+        rubric.PROFILE_BUILD_TOOL, "name-allowlist: setuptools",
+    )
+    assert rubric.detect_profile_from_name("wheel", "pypi") == (
+        rubric.PROFILE_BUILD_TOOL, "name-allowlist: wheel",
+    )
+    assert rubric.detect_profile_from_name("hatchling", "pypi") == (
+        rubric.PROFILE_BUILD_TOOL, "name-allowlist: hatchling",
+    )
+    assert rubric.detect_profile_from_name("poetry-core", "pypi") == (
+        rubric.PROFILE_BUILD_TOOL, "name-allowlist: poetry-core",
+    )
+    assert rubric.detect_profile_from_name("maturin", "pypi") == (
+        rubric.PROFILE_BUILD_TOOL, "name-allowlist: maturin",
+    )
+
+
 def test_normal_libraries_are_not_detected():
     assert rubric.detect_profile_from_name("lodash", "npm") is None
     assert rubric.detect_profile_from_name("mcp", "pypi") is None  # the SDK itself: library, not server
