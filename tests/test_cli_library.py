@@ -50,6 +50,27 @@ def test_library_list_empty(tmp_path, monkeypatch, capsys):
     assert "empty" in capsys.readouterr().out
 
 
+def test_library_list_filters_by_profile(tmp_path, monkeypatch, capsys):
+    lib = tmp_path / "lib"
+    manifest.write_library_entry({
+        "name": "lib-foo", "version": "1.0", "ecosystem": "pypi",
+        "target_hash": "lib-foo-hash", "profile": "plugin",
+        "score": {"final_score": 95, "deductions": []}, "findings": [],
+    }, library_root=lib)
+    manifest.write_library_entry({
+        "name": "mcp-server-foo", "version": "1.0", "ecosystem": "pypi",
+        "target_hash": "mcp-server-foo-hash", "profile": "mcp-server",
+        "score": {"final_score": 80, "deductions": []}, "findings": [],
+    }, library_root=lib)
+    _patch_lib(monkeypatch, lib)
+
+    cli.main(["library", "list", "--profile", "mcp-server"])
+    out = capsys.readouterr().out
+    assert "mcp-server-foo" in out
+    assert "lib-foo" not in out
+    assert "1 entries" in out
+
+
 def test_library_list_renders_entries(tmp_path, monkeypatch, capsys):
     lib = tmp_path / "lib"
     _seed_entry(lib, "alpha", "1.0", 95)

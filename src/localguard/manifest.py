@@ -95,6 +95,7 @@ def iter_library(library_root: Path | None = None, ecosystem: str | None = None)
                 continue
             fallback_name = "/".join(index_path.parent.relative_to(eco_root).parts)
             for entry in index.get("entries", []):
+                profile, profile_reason = _profile_for_entry(index_path.parent, entry)
                 rows.append({
                     "name": index.get("name") or fallback_name,
                     "ecosystem": eco,
@@ -102,23 +103,39 @@ def iter_library(library_root: Path | None = None, ecosystem: str | None = None)
                     "target_hash": entry.get("target_hash"),
                     "audited_at": entry.get("audited_at"),
                     "score": entry.get("score"),
+                    "profile": profile,
+                    "profile_reason": profile_reason,
                 })
     return rows
+
+
+def _profile_for_entry(name_dir: Path, entry: dict) -> tuple[str | None, str | None]:
+    version = entry.get("version") or "unversioned"
+    target = entry.get("target_hash") or ""
+    report = _read_json(name_dir / version / f"{target}.json")
+    if not report:
+        return None, None
+    return report.get("profile"), report.get("profile_reason")
 
 
 def library_stats(library_root: Path | None = None) -> dict:
     library_root = library_root or DEFAULT_LIBRARY_ROOT
     rows = iter_library(library_root=library_root)
     by_eco: dict[str, int] = {}
+    by_profile: dict[str, int] = {}
+    profile_scores: dict[str, list[int]] = {}
     bands = {"high": 0, "mid": 0, "low": 0, "unscored": 0}
     scores: list[int] = []
     for r in rows:
         by_eco[r["ecosystem"]] = by_eco.get(r["ecosystem"], 0) + 1
+        profile_key = r.get("profile") or "unknown"
+        by_profile[profile_key] = by_profile.get(profile_key, 0) + 1
         s = r.get("score")
         if s is None:
             bands["unscored"] += 1
         else:
             scores.append(s)
+            profile_scores.setdefault(profile_key, []).append(s)
             if s >= 90:
                 bands["high"] += 1
             elif s >= 50:
@@ -131,10 +148,13 @@ def library_stats(library_root: Path | None = None) -> dict:
     size_bytes = _library_size(library_root)
     mean = sum(scores) / len(scores) if scores else None
     median = sorted(scores)[len(scores) // 2] if scores else None
+    profile_means = {p: round(sum(s) / len(s), 1) for p, s in profile_scores.items() if s}
     return {
         "total": len(rows),
         "size_bytes": size_bytes,
         "by_ecosystem": dict(sorted(by_eco.items())),
+        "by_profile": dict(sorted(by_profile.items())),
+        "profile_mean_score": profile_means,
         "score_bands": bands,
         "mean_score": mean,
         "median_score": median,

@@ -55,6 +55,7 @@ def run(
         _check_library_root(library),
         _check_library_index(library),
         _check_library_schema(library),
+        _check_library_profiles(library),
         _check_cache_root(cache_dir),
     ])
 
@@ -176,6 +177,22 @@ def _check_library_schema(library: Path) -> Check:
         msg = f"{len(stale)}/{total} entries on old/missing schema (run `localguard library refresh`)"
         return Check("library-schema", "warn", msg)
     return Check("library-schema", "ok", f"{total}/{total} entries at schema_version {manifest.SCHEMA_VERSION}")
+
+
+def _check_library_profiles(library: Path) -> Check:
+    if not library.exists():
+        return Check("library-profiles", "ok", "(no library yet)")
+    rows = manifest.iter_library(library_root=library)
+    if not rows:
+        return Check("library-profiles", "ok", "(no library entries)")
+    by_profile: dict[str, int] = {}
+    for r in rows:
+        key = r.get("profile") or "<unset>"
+        by_profile[key] = by_profile.get(key, 0) + 1
+    parts = [f"{k}={v}" for k, v in sorted(by_profile.items())]
+    if "<unset>" in by_profile:
+        return Check("library-profiles", "warn", " ".join(parts) + "  (run `localguard library refresh` to stamp profile on legacy entries)")
+    return Check("library-profiles", "ok", " ".join(parts))
 
 
 def _check_cache_root(cache_dir: Path) -> Check:

@@ -164,6 +164,7 @@ def _add_library(sub: argparse._SubParsersAction) -> None:
 
     p_list = lib_sub.add_parser("list", help="List every baselined package (newest first).")
     p_list.add_argument("--ecosystem", choices=["pypi", "npm"], default=None)
+    p_list.add_argument("--profile", choices=PROFILE_CHOICES, default=None, help="Filter to entries baselined under this profile.")
     p_list.add_argument("--json", action="store_true")
     p_list.set_defaults(handler=_handle_library_list)
 
@@ -186,11 +187,14 @@ def _add_library(sub: argparse._SubParsersAction) -> None:
     p_refresh.add_argument("--ecosystem", choices=["pypi", "npm"], default=None)
     p_refresh.add_argument("--name", default=None, help="Substring filter on package name.")
     p_refresh.add_argument("--dry-run", action="store_true")
+    p_refresh.add_argument("--redetect-profile", action="store_true", help="Discard stored profile and re-run detection (use to migrate legacy entries or after a detection-rule change).")
     p_refresh.set_defaults(handler=_handle_library_refresh)
 
 
 def _handle_library_list(args: argparse.Namespace) -> int:
     rows = manifest.iter_library(ecosystem=args.ecosystem)
+    if args.profile:
+        rows = [r for r in rows if (r.get("profile") or "plugin") == args.profile]
     rows.sort(key=lambda r: (r.get("audited_at") or ""), reverse=True)
     if args.json:
         _emit_json(rows, pretty=True)
@@ -198,9 +202,10 @@ def _handle_library_list(args: argparse.Namespace) -> int:
     if not rows:
         sys.stdout.write("(library is empty)\n")
         return 0
-    sys.stdout.write(f"{'PACKAGE':<40} {'VERSION':<16} {'ECO':<6} {'SCORE':<6} AUDITED\n")
+    sys.stdout.write(f"{'PACKAGE':<40} {'VERSION':<16} {'ECO':<6} {'PROFILE':<11} {'SCORE':<6} AUDITED\n")
     for r in rows:
-        sys.stdout.write(f"{r['name']:<40} {str(r.get('version') or '?'):<16} {r['ecosystem']:<6} {str(r.get('score') or '?'):<6} {r.get('audited_at') or '?'}\n")
+        profile = r.get("profile") or "?"
+        sys.stdout.write(f"{r['name']:<40} {str(r.get('version') or '?'):<16} {r['ecosystem']:<6} {profile:<11} {str(r.get('score') or '?'):<6} {r.get('audited_at') or '?'}\n")
     sys.stdout.write(f"\n{len(rows)} entries\n")
     return 0
 
@@ -217,7 +222,12 @@ def _handle_library_stats(args: argparse.Namespace) -> int:
     sys.stdout.write(f"size on disk:  {stats['size_bytes']/1024:.1f} KiB\n")
     sys.stdout.write("\nby ecosystem:\n")
     for eco, n in stats["by_ecosystem"].items():
-        sys.stdout.write(f"  {eco:<6} {n}\n")
+        sys.stdout.write(f"  {eco:<11} {n}\n")
+    sys.stdout.write("\nby profile:\n")
+    for prof, n in stats["by_profile"].items():
+        mean = stats["profile_mean_score"].get(prof)
+        mean_str = f"  (mean score {mean})" if mean is not None else ""
+        sys.stdout.write(f"  {prof:<11} {n}{mean_str}\n")
     sys.stdout.write("\nscore distribution:\n")
     sys.stdout.write(f"  >= 90 (auto-baselined):     {stats['score_bands']['high']}\n")
     sys.stdout.write(f"  50-89 (manually accepted):  {stats['score_bands']['mid']}\n")
@@ -249,7 +259,7 @@ def _handle_library_refresh(args: argparse.Namespace) -> int:
             sys.stdout.write(f"  {verb}: {o.ecosystem}/{o.name}=={o.version}{delta}\n")
         elif o.status == "error":
             sys.stdout.write(f"  SKIPPED: {o.ecosystem}/{o.name}=={o.version} ({o.error})\n")
-    summary = library_refresh_mod.refresh(ecosystem=args.ecosystem, name_pattern=args.name, dry_run=args.dry_run, on_progress=report_outcome)
+    summary = library_refresh_mod.refresh(ecosystem=args.ecosystem, name_pattern=args.name, dry_run=args.dry_run, redetect_profile=args.redetect_profile, on_progress=report_outcome)
     sys.stdout.write(f"\n{summary.refreshed} refreshed, {summary.errors} errors")
     if args.dry_run:
         sys.stdout.write("  (dry-run)")

@@ -37,6 +37,7 @@ def refresh(
     ecosystem: str | None = None,
     name_pattern: str | None = None,
     dry_run: bool = False,
+    redetect_profile: bool = False,
     library_root: Path | None = None,
     on_progress: Callable[[RefreshOutcome], None] | None = None,
 ) -> RefreshSummary:
@@ -46,14 +47,14 @@ def refresh(
         rows = [r for r in rows if name_pattern.lower() in (r.get("name") or "").lower()]
     outcomes: list[RefreshOutcome] = []
     for row in rows:
-        outcome = _refresh_one(row, dry_run=dry_run, library_root=library_root)
+        outcome = _refresh_one(row, dry_run=dry_run, redetect_profile=redetect_profile, library_root=library_root)
         outcomes.append(outcome)
         if on_progress:
             on_progress(outcome)
     return RefreshSummary(outcomes=outcomes, dry_run=dry_run)
 
 
-def _refresh_one(row: dict, *, dry_run: bool, library_root: Path) -> RefreshOutcome:
+def _refresh_one(row: dict, *, dry_run: bool, redetect_profile: bool, library_root: Path) -> RefreshOutcome:
     name = row["name"]
     version = row["version"]
     eco = row["ecosystem"]
@@ -61,8 +62,12 @@ def _refresh_one(row: dict, *, dry_run: bool, library_root: Path) -> RefreshOutc
     sep = "@" if eco == "npm" else "=="
     spec = f"{name}{sep}{version}" if version else name
     stored = manifest.find_library_entry(name, eco, version=version, library_root=library_root) or {}
-    stored_profile = stored.get("profile")
-    stored_reason = stored.get("profile_reason")
+    if redetect_profile:
+        stored_profile = None
+        stored_reason = None
+    else:
+        stored_profile = stored.get("profile")
+        stored_reason = stored.get("profile_reason")
     try:
         report, _spec, _root = inspect_mod.inspect(spec, ecosystem=eco, profile=stored_profile, profile_reason=stored_reason)
     except Exception as exc:

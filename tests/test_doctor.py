@@ -134,6 +134,38 @@ def test_doctor_warns_on_orphan_report(tmp_path, good_settings):
     assert "orphan" in idx.detail
 
 
+def test_doctor_library_profiles_reports_mix(tmp_path, good_settings):
+    library = tmp_path / "library"
+    _write_library_entry(library, "alpha", "1.0", target_hash="aaa")
+    # Manually patch the report to carry profile="mcp-server"
+    report_path = library / "pypi" / "alpha" / "1.0" / "aaa.json"
+    data = json.loads(report_path.read_text(encoding="utf-8"))
+    data["profile"] = "mcp-server"
+    report_path.write_text(json.dumps(data), encoding="utf-8")
+    _write_library_entry(library, "beta", "1.0", target_hash="bbb")  # default profile field absent
+    report_path2 = library / "pypi" / "beta" / "1.0" / "bbb.json"
+    data2 = json.loads(report_path2.read_text(encoding="utf-8"))
+    data2["profile"] = "plugin"
+    report_path2.write_text(json.dumps(data2), encoding="utf-8")
+
+    report = doctor.run(settings_path=good_settings, library_root=library, cache_root=tmp_path / "cache")
+    profiles = next(c for c in report.checks if c.name == "library-profiles")
+    assert profiles.status == "ok"
+    assert "mcp-server=1" in profiles.detail
+    assert "plugin=1" in profiles.detail
+
+
+def test_doctor_library_profiles_warns_on_unset(tmp_path, good_settings):
+    library = tmp_path / "library"
+    _write_library_entry(library, "alpha", "1.0", target_hash="aaa")
+    # Leave the report without a profile field at all.
+    report = doctor.run(settings_path=good_settings, library_root=library, cache_root=tmp_path / "cache")
+    profiles = next(c for c in report.checks if c.name == "library-profiles")
+    assert profiles.status == "warn"
+    assert "<unset>" in profiles.detail
+    assert "refresh" in profiles.detail
+
+
 def test_doctor_warns_on_stale_schema(tmp_path, good_settings):
     library = tmp_path / "library"
     _write_library_entry(library, "six", "1.16.0", schema_version=None)

@@ -6,11 +6,11 @@ from pathlib import Path
 from localguard import manifest
 
 
-def _write(library: Path, eco: str, name: str, version: str, score: int, audited_at: str, target_hash: str | None = None):
+def _write(library: Path, eco: str, name: str, version: str, score: int, audited_at: str, target_hash: str | None = None, profile: str = "plugin"):
     target_hash = target_hash or f"{name}-{version}-hash"
     bucket = library / eco / name / version
     bucket.mkdir(parents=True, exist_ok=True)
-    report = {"name": name, "version": version, "ecosystem": eco, "target_hash": target_hash, "schema_version": 1, "score": {"final_score": score}}
+    report = {"name": name, "version": version, "ecosystem": eco, "target_hash": target_hash, "schema_version": 1, "score": {"final_score": score}, "profile": profile, "profile_reason": "test"}
     (bucket / f"{target_hash}.json").write_text(json.dumps(report), encoding="utf-8")
     idx_path = library / eco / name / "_index.json"
     idx = json.loads(idx_path.read_text(encoding="utf-8")) if idx_path.exists() else {"name": name, "ecosystem": eco, "entries": []}
@@ -39,6 +39,26 @@ def test_library_stats_buckets_and_extremes(tmp_path):
     assert stats["oldest"]["name"] == "alpha"
     assert stats["newest"]["name"] == "gamma"
     assert stats["size_bytes"] > 0
+
+
+def test_library_stats_by_profile_breakdown(tmp_path):
+    library = tmp_path / "library"
+    _write(library, "pypi", "alpha", "1.0", 95, "2026-01-01T00:00:00+00:00", profile="plugin")
+    _write(library, "pypi", "beta", "1.0", 70, "2026-03-01T00:00:00+00:00", profile="plugin")
+    _write(library, "pypi", "mcp-server-foo", "1.0", 80, "2026-04-01T00:00:00+00:00", profile="mcp-server")
+
+    stats = manifest.library_stats(library_root=library)
+    assert stats["by_profile"] == {"mcp-server": 1, "plugin": 2}
+    assert stats["profile_mean_score"]["plugin"] == 82.5
+    assert stats["profile_mean_score"]["mcp-server"] == 80.0
+
+
+def test_iter_library_surfaces_profile(tmp_path):
+    library = tmp_path / "library"
+    _write(library, "pypi", "alpha", "1.0", 95, "2026-01-01T00:00:00+00:00", profile="mcp-server")
+    rows = manifest.iter_library(library_root=library)
+    assert rows[0]["profile"] == "mcp-server"
+    assert rows[0]["profile_reason"] == "test"
 
 
 def test_library_stats_handles_unscored(tmp_path):

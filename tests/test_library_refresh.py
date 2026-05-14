@@ -65,6 +65,24 @@ def test_refresh_dry_run_does_not_write(tmp_path, monkeypatch):
     assert after.keys() == before.keys()
 
 
+def test_refresh_redetect_profile_overrides_stored(tmp_path, monkeypatch):
+    _patch_roots(monkeypatch, tmp_path)
+    _seed_cache(tmp_path / "cache", FIXTURES / "clean_pkg", "clean-pkg", "0.1.0")
+    # Seed with WRONG profile stored (simulating legacy/bug-era entry).
+    from localguard import audit
+    report = audit.audit_path(FIXTURES / "clean_pkg", profile="mcp-server", profile_reason="legacy-bug").to_dict()
+    report["name"] = "clean-pkg"
+    report["version"] = "0.1.0"
+    report["ecosystem"] = "pypi"
+    manifest.write_library_entry(report, library_root=tmp_path / "lib")
+
+    summary = library_refresh.refresh(library_root=tmp_path / "lib", redetect_profile=True)
+    assert summary.refreshed == 1
+    refreshed = manifest.find_library_entry("clean-pkg", "pypi", version="0.1.0", library_root=tmp_path / "lib")
+    # clean-pkg has no MCP findings and doesn't match the mcp-server-* name convention, so re-detection falls back to plugin.
+    assert refreshed["profile"] == "plugin"
+
+
 def test_refresh_preserves_stored_profile(tmp_path, monkeypatch):
     _patch_roots(monkeypatch, tmp_path)
     _seed_cache(tmp_path / "cache", FIXTURES / "clean_pkg", "clean-pkg", "0.1.0")
