@@ -39,7 +39,90 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_init_hook(sub)
     _add_doctor(sub)
     _add_hook_bash(sub)
+    _add_profiles(sub)
     return parser
+
+
+def _add_profiles(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser("profiles", help="Inspect the available scoring profiles and their weight tables.")
+    pr_sub = p.add_subparsers(dest="profiles_command", required=True)
+
+    p_list = pr_sub.add_parser("list", help="List every available role profile with a one-line summary of what it relaxes vs plugin.")
+    p_list.add_argument("--json", action="store_true")
+    p_list.set_defaults(handler=_handle_profiles_list)
+
+    p_show = pr_sub.add_parser("show", help="Print the full weight matrix for a profile (per-surface per_finding + cap, with delta vs plugin baseline).")
+    p_show.add_argument("name", choices=PROFILE_CHOICES, help="Profile name.")
+    p_show.add_argument("--json", action="store_true")
+    p_show.set_defaults(handler=_handle_profiles_show)
+
+
+def _handle_profiles_list(args: argparse.Namespace) -> int:
+    rows = []
+    plugin = rubric.weights_for(rubric.PROFILE_PLUGIN)
+    for name in PROFILE_CHOICES:
+        w = rubric.weights_for(name)
+        relaxed: list[str] = []
+        stricter: list[str] = []
+        for kind, plugin_w in plugin.items():
+            profile_w = w.get(kind)
+            if not profile_w:
+                continue
+            if profile_w.per_finding < plugin_w.per_finding or profile_w.cap < plugin_w.cap:
+                relaxed.append(kind.value)
+            elif profile_w.per_finding > plugin_w.per_finding or profile_w.cap > plugin_w.cap:
+                stricter.append(kind.value)
+        rows.append({
+            "name": name,
+            "relaxes": sorted(relaxed),
+            "stricter": sorted(stricter),
+        })
+    if args.json:
+        _emit_json(rows, pretty=True)
+        return 0
+    sys.stdout.write(f"{'PROFILE':<22} RELAXES VS PLUGIN\n")
+    for r in rows:
+        relaxed = ", ".join(r["relaxes"]) if r["relaxes"] else "(none -- baseline)"
+        sys.stdout.write(f"{r['name']:<22} {relaxed}\n")
+    sys.stdout.write(f"\n{len(rows)} profiles total. Run `localguard profiles show <name>` for the full weight matrix.\n")
+    return 0
+
+
+def _handle_profiles_show(args: argparse.Namespace) -> int:
+    w = rubric.weights_for(args.name)
+    plugin = rubric.weights_for(rubric.PROFILE_PLUGIN)
+    rows = []
+    for kind, profile_w in w.items():
+        plugin_w = plugin.get(kind)
+        plugin_pf = plugin_w.per_finding if plugin_w else None
+        plugin_cap = plugin_w.cap if plugin_w else None
+        delta: list[str] = []
+        if plugin_w:
+            if profile_w.per_finding < plugin_pf:
+                delta.append(f"per_finding -{plugin_pf - profile_w.per_finding}")
+            elif profile_w.per_finding > plugin_pf:
+                delta.append(f"per_finding +{profile_w.per_finding - plugin_pf}")
+            if profile_w.cap < plugin_cap:
+                delta.append(f"cap -{plugin_cap - profile_w.cap}")
+            elif profile_w.cap > plugin_cap:
+                delta.append(f"cap +{profile_w.cap - plugin_cap}")
+        rows.append({
+            "surface": kind.value,
+            "per_finding": profile_w.per_finding,
+            "cap": profile_w.cap,
+            "plugin_per_finding": plugin_pf,
+            "plugin_cap": plugin_cap,
+            "delta_vs_plugin": ", ".join(delta) if delta else "(same as plugin)",
+        })
+    rows.sort(key=lambda r: r["surface"])
+    if args.json:
+        _emit_json({"profile": args.name, "weights": rows}, pretty=True)
+        return 0
+    sys.stdout.write(f"# profile: {args.name}\n\n")
+    sys.stdout.write(f"{'SURFACE':<22} {'PER_FINDING':<12} {'CAP':<6} DELTA VS PLUGIN\n")
+    for r in rows:
+        sys.stdout.write(f"{r['surface']:<22} {r['per_finding']:<12} {r['cap']:<6} {r['delta_vs_plugin']}\n")
+    return 0
 
 
 def _add_diff_versions(sub: argparse._SubParsersAction) -> None:
@@ -191,6 +274,18 @@ def _add_library(sub: argparse._SubParsersAction) -> None:
     p_refresh.add_argument("--redetect-profile", action="store_true", help="Discard stored profile and re-run detection (use to migrate legacy entries or after a detection-rule change).")
     p_refresh.set_defaults(handler=_handle_library_refresh)
 
+    p_review = lib_sub.add_parser("blocked-review", help="Triage view of blocked encounters: blocked-role-typical entries (likely safe to accept) at the top sorted by role_typical_share desc, blocked-suspicious entries below.")
+    p_review.add_argument("--ecosystem", choices=["pypi", "npm"], default=None)
+    p_review.add_argument("--json", action="store_true")
+    p_review.set_defaults(handler=_handle_library_blocked_review)
+
+    p_promote = lib_sub.add_parser("promote", help="Upgrade a blocked-* library entry to status=accepted after manual review. Symmetrical with `library forget`.")
+    p_promote.add_argument("spec", help="name==version")
+    p_promote.add_argument("--ecosystem", choices=["pypi", "npm"], default="pypi")
+    p_promote.add_argument("--pin-surfaces", action="store_true", help="Record the entry's current surface counts as expected_surface_counts so future drift fires only when a surface's count exceeds the pinned value.")
+    p_promote.add_argument("--yes", action="store_true")
+    p_promote.set_defaults(handler=_handle_library_promote)
+
 
 def _handle_library_list(args: argparse.Namespace) -> int:
     rows = manifest.iter_library(ecosystem=args.ecosystem)
@@ -287,6 +382,105 @@ def _handle_library_forget(args: argparse.Namespace) -> int:
         sys.stderr.write(f"no entry found for {name}=={version} ({args.ecosystem})\n")
         return 1
     sys.stdout.write(f"removed {name}=={version} ({args.ecosystem})\n")
+    return 0
+
+
+def _handle_library_blocked_review(args: argparse.Namespace) -> int:
+    """Triage view: blocked entries grouped by status, sorted to make the
+    likely-safe ones easy to spot. blocked-role-typical at top (sorted by
+    role_typical_share descending), blocked-suspicious below.
+    """
+    rows = manifest.iter_library(ecosystem=args.ecosystem)
+    blocked = [r for r in rows if r.get("status", "accepted") != "accepted"]
+    for r in blocked:
+        # Fetch role_typical_share from the underlying report file.
+        report = _load_report_for_row(r)
+        r["role_typical_share"] = ((report or {}).get("score") or {}).get("role_typical_share", 0.0)
+    role_typical = sorted(
+        [r for r in blocked if r.get("status") == "blocked-role-typical"],
+        key=lambda r: r.get("role_typical_share", 0.0),
+        reverse=True,
+    )
+    suspicious = sorted(
+        [r for r in blocked if r.get("status") == "blocked-suspicious"],
+        key=lambda r: r.get("role_typical_share", 0.0),
+        reverse=True,
+    )
+    if args.json:
+        _emit_json({"blocked_role_typical": role_typical, "blocked_suspicious": suspicious}, pretty=True)
+        return 0
+    if not blocked:
+        sys.stdout.write("(no blocked entries to review)\n")
+        return 0
+    _print_blocked_section("BLOCKED-ROLE-TYPICAL (likely safe to accept after a quick look)", role_typical)
+    _print_blocked_section("BLOCKED-SUSPICIOUS (read the report before considering accept)", suspicious)
+    sys.stdout.write(f"\n{len(blocked)} blocked entries; promote with `localguard library promote <spec>` or forget with `localguard library forget <spec>`.\n")
+    return 0
+
+
+def _print_blocked_section(title: str, rows: list[dict]) -> None:
+    if not rows:
+        return
+    sys.stdout.write(f"\n# {title}\n")
+    sys.stdout.write(f"{'PACKAGE':<40} {'VERSION':<16} {'ECO':<6} {'PROFILE':<22} {'SHARE':<7} SCORE\n")
+    for r in rows:
+        profile = r.get("profile") or "?"
+        share_pct = f"{r.get('role_typical_share', 0.0):.0%}"
+        sys.stdout.write(
+            f"{r['name']:<40} {str(r.get('version') or '?'):<16} {r['ecosystem']:<6} {profile:<22} {share_pct:<7} {r.get('score') or '?'}\n"
+        )
+
+
+def _load_report_for_row(row: dict) -> dict | None:
+    library_root = manifest.DEFAULT_LIBRARY_ROOT
+    eco = row["ecosystem"]
+    name = row["name"]
+    version = row.get("version") or "unversioned"
+    target = row.get("target_hash") or ""
+    return manifest._read_json(library_root / eco / name / version / f"{target}.json")
+
+
+def _handle_library_promote(args: argparse.Namespace) -> int:
+    name, _, version = args.spec.partition("==")
+    if not version:
+        sys.stderr.write("promote requires name==version\n")
+        return 2
+    library_root = manifest.DEFAULT_LIBRARY_ROOT
+    # Find the exact entry.
+    name_dir = library_root / args.ecosystem / name / version
+    if not name_dir.exists():
+        sys.stderr.write(f"no entry found for {name}=={version} ({args.ecosystem})\n")
+        return 1
+    json_files = list(name_dir.glob("*.json"))
+    if not json_files:
+        sys.stderr.write(f"no report file in {name_dir}\n")
+        return 1
+    report_path = json_files[0]
+    report = manifest._read_json(report_path)
+    if not report:
+        sys.stderr.write(f"could not read {report_path}\n")
+        return 1
+    current_status = report.get("status") or "accepted"
+    if current_status == "accepted":
+        sys.stdout.write(f"{name}=={version} is already status=accepted; nothing to do\n")
+        return 0
+    score = (report.get("score") or {}).get("final_score")
+    share = (report.get("score") or {}).get("role_typical_share", 0.0)
+    sys.stdout.write(f"package: {name}=={version} ({args.ecosystem})\n")
+    sys.stdout.write(f"current: status={current_status}, score={score}, role_typical_share={share:.0%}\n")
+    sys.stdout.write(_finding_summary(report) + "\n")
+    if not args.yes:
+        sys.stdout.write(f"Promote {name}=={version} from {current_status} to accepted? Type 'promote' to confirm: ")
+        sys.stdout.flush()
+        if sys.stdin.readline().strip().lower() != "promote":
+            sys.stdout.write("aborted; status unchanged\n")
+            return 1
+    report["status"] = "accepted"
+    if args.pin_surfaces:
+        report["expected_surface_counts"] = _surface_counts_from_report(report)
+        sys.stdout.write(f"pinned surfaces: {report['expected_surface_counts']}\n")
+    manifest.write_library_entry(report, refresh=True)
+    sys.stdout.write(f"promoted {name}=={version} to status=accepted\n")
     return 0
 
 
