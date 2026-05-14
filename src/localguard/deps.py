@@ -68,7 +68,11 @@ def audit_tree(raw_spec: str, ecosystem: str | None = None, *, max_depth: int = 
         node.truncated = True
         return node
     for dep in extract_deps(audit_root, spec.ecosystem):
-        child = audit_tree(dep.name, ecosystem=spec.ecosystem, max_depth=max_depth, cache_root=cache_root, library_root=library_root, visited=visited, specifier=dep.specifier, profile=profile, profile_reason=profile_reason, _depth=_depth + 1)
+        # Children resolve their own profile independently -- a transitive dep
+        # of an mcp-server is still a library/plugin in its own right (httpx
+        # under mcp is still httpx; strict scoring catches a malicious update
+        # there even if the parent's surfaces are intentional).
+        child = audit_tree(dep.name, ecosystem=spec.ecosystem, max_depth=max_depth, cache_root=cache_root, library_root=library_root, visited=visited, specifier=dep.specifier, profile=None, profile_reason=None, _depth=_depth + 1)
         node.children.append(child)
     return node
 
