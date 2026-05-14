@@ -10,6 +10,48 @@ from localguard import deps, fetch, hook, preflight
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
+def test_extract_uvx_applies_mcp_server_profile():
+    installs = hook.extract_installs("uvx mcp-server-foo")
+    assert len(installs) == 1
+    assert installs[0].ecosystem == "pypi"
+    assert installs[0].specs == ["mcp-server-foo"]
+    assert installs[0].profile_hint == "mcp-server"
+    assert installs[0].profile_reason == "install-verb: uvx"
+
+
+def test_extract_pipx_install_applies_mcp_server_profile():
+    installs = hook.extract_installs("pipx install some-cli")
+    assert installs[0].profile_hint == "mcp-server"
+    assert installs[0].profile_reason == "install-verb: pipx install"
+
+
+def test_extract_uv_tool_install_applies_mcp_server_profile():
+    installs = hook.extract_installs("uv tool install ruff")
+    assert installs[0].ecosystem == "pypi"
+    assert installs[0].specs == ["ruff"]
+    assert installs[0].profile_hint == "mcp-server"
+    assert installs[0].profile_reason == "install-verb: uv tool install"
+
+
+def test_extract_npx_yes_applies_mcp_server_profile():
+    installs = hook.extract_installs("npx -y @modelcontextprotocol/server-filesystem")
+    assert installs[0].ecosystem == "npm"
+    assert installs[0].specs == ["@modelcontextprotocol/server-filesystem"]
+    assert installs[0].profile_hint == "mcp-server"
+
+
+def test_extract_npx_without_yes_is_not_classified():
+    # npx without -y prompts interactively; don't apply profile/auto-install.
+    installs = hook.extract_installs("npx @modelcontextprotocol/server-filesystem")
+    assert installs == []
+
+
+def test_extract_plain_install_has_no_profile_hint():
+    installs = hook.extract_installs("pip install requests")
+    assert installs[0].profile_hint is None
+    assert installs[0].profile_reason is None
+
+
 def test_extract_pip_install_basic():
     installs = hook.extract_installs("pip install requests httpx==0.27.0")
     assert len(installs) == 1

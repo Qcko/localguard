@@ -17,6 +17,8 @@ SPEC_PATTERN = re.compile(r"^(?:@[A-Za-z0-9._-]+/)?[A-Za-z0-9._-]+(?:[@=]{1,2}[A
 class ExtractedInstall:
     ecosystem: str
     specs: list[str]
+    profile_hint: str | None = None
+    profile_reason: str | None = None
 
 
 def _parse_payload(text: str) -> dict | None:
@@ -42,7 +44,7 @@ def run_hook(stdin_text: str, stderr=sys.stderr, stdout=sys.stdout) -> int:
     for install in installs:
         for spec in install.specs:
             try:
-                node = deps_mod.audit_tree(spec, ecosystem=install.ecosystem)
+                node = deps_mod.audit_tree(spec, ecosystem=install.ecosystem, profile=install.profile_hint, profile_reason=install.profile_reason)
             except Exception as exc:
                 stderr.write(f"[localguard] BLOCK {spec} ({install.ecosystem}): preflight error: {exc}\n")
                 blockers.append(f"{spec} ({install.ecosystem}): preflight-error")
@@ -104,6 +106,21 @@ _REDIRECT_TOKEN = re.compile(r"^\d*[<>]+&?\d*$")
 
 def _classify(tokens: list[str]) -> ExtractedInstall | None:
     head = tokens[0].lower()
+    # Runner-style verbs imply "fetch and run as a standalone tool" -- the
+    # user's deliberate choice of invocation is a strong signal that the
+    # target is a server/tool, not a library import. Apply mcp-server profile.
+    if head == "uvx":
+        return ExtractedInstall(ecosystem="pypi", specs=_specs_after_flags(tokens[1:]), profile_hint="mcp-server", profile_reason="install-verb: uvx")
+    if head == "pipx" and len(tokens) >= 2 and tokens[1].lower() in {"install", "run"}:
+        verb = f"pipx {tokens[1].lower()}"
+        return ExtractedInstall(ecosystem="pypi", specs=_specs_after_flags(tokens[2:]), profile_hint="mcp-server", profile_reason=f"install-verb: {verb}")
+    if head == "uv" and len(tokens) >= 3 and tokens[1].lower() == "tool" and tokens[2].lower() in {"install", "run"}:
+        verb = f"uv tool {tokens[2].lower()}"
+        return ExtractedInstall(ecosystem="pypi", specs=_specs_after_flags(tokens[3:]), profile_hint="mcp-server", profile_reason=f"install-verb: {verb}")
+    if head == "npx" and len(tokens) >= 2 and _has_yes_flag(tokens[1:]):
+        return ExtractedInstall(ecosystem="npm", specs=_specs_after_flags(tokens[1:]), profile_hint="mcp-server", profile_reason="install-verb: npx -y")
+    # Regular install verbs -- profile defaults to plugin; later auto-detect
+    # passes (name convention, content) may still upgrade to mcp-server.
     if head in {"pip", "pip3"} and len(tokens) >= 2 and tokens[1].lower() == "install":
         return ExtractedInstall(ecosystem="pypi", specs=_specs_after_flags(tokens[2:]))
     if head == "uv" and len(tokens) >= 2:
@@ -119,6 +136,10 @@ def _classify(tokens: list[str]) -> ExtractedInstall | None:
     if head == "yarn" and len(tokens) >= 2 and tokens[1].lower() == "add":
         return ExtractedInstall(ecosystem="npm", specs=_specs_after_flags(tokens[2:]))
     return None
+
+
+def _has_yes_flag(args: list[str]) -> bool:
+    return any(t in {"-y", "--yes"} for t in args)
 
 
 def _specs_after_flags(args: list[str]) -> list[str]:
