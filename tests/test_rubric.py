@@ -440,6 +440,32 @@ def test_notebook_runtime_profile_stays_strict_on_env_secret_and_data_exfil():
     assert plugin_exfil.final_score == nb_exfil.final_score
 
 
+def test_data_app_profile_relaxes_listening_port_and_subprocess_and_fs_write():
+    findings = (
+        _surf(SurfaceKind.LISTENING_PORT, 3)
+        + _surf(SurfaceKind.SUBPROCESS, 5)
+        + _surf(SurfaceKind.FS_WRITE, 8)
+    )
+    plugin = rubric.score(findings, profile=rubric.PROFILE_PLUGIN)
+    da = rubric.score(findings, profile=rubric.PROFILE_DATA_APP)
+    assert da.final_score > plugin.final_score
+
+
+def test_data_app_profile_stays_strict_on_env_secret_data_exfil_and_telemetry():
+    env = _surf(SurfaceKind.ENV_SECRET_READ, 3)
+    exfil = _surf(SurfaceKind.DATA_EXFIL_HINT, 2)
+    tel = _surf(SurfaceKind.TELEMETRY_ENDPOINT, 3)
+    plugin_env = rubric.score(env, profile=rubric.PROFILE_PLUGIN)
+    da_env = rubric.score(env, profile=rubric.PROFILE_DATA_APP)
+    plugin_exfil = rubric.score(exfil, profile=rubric.PROFILE_PLUGIN)
+    da_exfil = rubric.score(exfil, profile=rubric.PROFILE_DATA_APP)
+    plugin_tel = rubric.score(tel, profile=rubric.PROFILE_PLUGIN)
+    da_tel = rubric.score(tel, profile=rubric.PROFILE_DATA_APP)
+    assert plugin_env.final_score == da_env.final_score
+    assert plugin_exfil.final_score == da_exfil.final_score
+    assert plugin_tel.final_score == da_tel.final_score
+
+
 def test_unknown_profile_falls_back_to_plugin_weights():
     findings = _surf(SurfaceKind.LISTENING_PORT, 5)
     bogus = rubric.score(findings, profile="not-a-real-profile")

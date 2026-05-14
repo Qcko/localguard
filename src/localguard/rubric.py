@@ -70,6 +70,37 @@ CLI_FRAMEWORK_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
 }
 
+# A data-app builder (gradio, streamlit, dash, panel, nicegui, reflex, voila).
+# These are a layer ABOVE web-framework: they wrap a web framework + a
+# component model + a kernel-like state loop to let data scientists ship
+# interactive ML/data demos as a single Python file. Surfaces fire hard:
+# they bind a server port (listening_port), spawn sharing/tunnel processes
+# (subprocess), write file uploads + cache + example assets (fs_write),
+# call model APIs (outbound + outbound_dynamic), embed many doc-example
+# URLs (hardcoded_host), and use compile() in their component reactive-
+# expression machinery (obfuscation, dynamic-shape).
+# Relax the operational surfaces (subprocess, fs_write, listening_port,
+# outbound, hardcoded_host) but STAY STRICT on env_secret_read (HF tokens,
+# API keys), data_exfil_hint (POSTing sensitive vars is critical regardless
+# of role -- gradio's data_exfil findings warrant manual review even when
+# the role is "build a demo"), telemetry_endpoint (streamlit's telemetry
+# IS noteworthy, even if documented), and obfuscation (the shape split
+# already lightens the legitimate compile() case).
+DATA_APP_WEIGHTS: dict[SurfaceKind, Weight] = {
+    SurfaceKind.OUTBOUND_NETWORK: Weight(2, 10),
+    SurfaceKind.OUTBOUND_DYNAMIC: Weight(4, 25),
+    SurfaceKind.LISTENING_PORT: Weight(5, 20),
+    SurfaceKind.SUBPROCESS: Weight(5, 20),
+    SurfaceKind.FS_WRITE: Weight(2, 10),
+    SurfaceKind.ENV_SECRET_READ: Weight(10, 20),
+    SurfaceKind.HARDCODED_HOST: Weight(1, 5),
+    SurfaceKind.TELEMETRY_ENDPOINT: Weight(10, 20),
+    SurfaceKind.OBFUSCATION: Weight(8, 60),
+    SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
+    SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
+    SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+}
+
 # An async runtime (twisted, gevent, eventlet, curio, anyio backends).
 # These libraries run event loops, manage green-thread / coroutine
 # pools, do raw socket I/O, and write IPC files / unix sockets.
@@ -470,6 +501,7 @@ PROFILE_WEB_FRAMEWORK = "web-framework"
 PROFILE_ASYNC_RUNTIME = "async-runtime"
 PROFILE_TASK_QUEUE = "task-queue"
 PROFILE_NOTEBOOK_RUNTIME = "notebook-runtime"
+PROFILE_DATA_APP = "data-app"
 DEFAULT_PROFILE = PROFILE_PLUGIN
 
 PROFILE_WEIGHTS: dict[str, dict[SurfaceKind, Weight]] = {
@@ -492,6 +524,7 @@ PROFILE_WEIGHTS: dict[str, dict[SurfaceKind, Weight]] = {
     PROFILE_ASYNC_RUNTIME: ASYNC_RUNTIME_WEIGHTS,
     PROFILE_TASK_QUEUE: TASK_QUEUE_WEIGHTS,
     PROFILE_NOTEBOOK_RUNTIME: NOTEBOOK_RUNTIME_WEIGHTS,
+    PROFILE_DATA_APP: DATA_APP_WEIGHTS,
 }
 
 # Backwards-compat alias for any external caller.
@@ -613,6 +646,25 @@ TASK_QUEUE_NAMES: set[str] = {
 # Notebook runtimes -- ipython, jupyter family, notebook executors.
 # Executing arbitrary user-supplied code is the documented contract; the
 # obfuscation findings (compile/exec of cell source) are role-typical.
+# Data-app builders -- the "ship an ML demo as one Python file" category.
+# Distinct from web-framework (general-purpose request handling) and from
+# ml-framework (the model code itself); these are the UI/serving layer
+# that lets a data scientist wrap a model behind a web UI without writing
+# routing code. Tight allowlist.
+DATA_APP_NAMES: set[str] = {
+    "gradio", "gradio-client",
+    "streamlit",
+    "dash", "dash-bootstrap-components", "dash-core-components",
+    "panel",
+    "nicegui",
+    "reflex",
+    "voila",
+    "solara",
+    "shiny",  # py-shiny / posit shiny
+    "anywidget",
+}
+
+
 NOTEBOOK_RUNTIME_NAMES: set[str] = {
     "ipython",
     "jupyter", "jupyter-core", "jupyter-client",
@@ -830,6 +882,8 @@ def detect_profile_from_name(name: str, ecosystem: str) -> tuple[str, str] | Non
             return PROFILE_TASK_QUEUE, f"name-allowlist: {name}"
         if name in NOTEBOOK_RUNTIME_NAMES:
             return PROFILE_NOTEBOOK_RUNTIME, f"name-allowlist: {name}"
+        if name in DATA_APP_NAMES:
+            return PROFILE_DATA_APP, f"name-allowlist: {name}"
         return None
     if ecosystem == "npm":
         if name.startswith("@modelcontextprotocol/server-"):

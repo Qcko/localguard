@@ -333,6 +333,21 @@ def test_ipython_jupyter_etc_detect_as_notebook_runtime():
     )
 
 
+def test_gradio_streamlit_etc_detect_as_data_app():
+    assert rubric.detect_profile_from_name("gradio", "pypi") == (
+        rubric.PROFILE_DATA_APP, "name-allowlist: gradio",
+    )
+    assert rubric.detect_profile_from_name("streamlit", "pypi") == (
+        rubric.PROFILE_DATA_APP, "name-allowlist: streamlit",
+    )
+    assert rubric.detect_profile_from_name("dash", "pypi") == (
+        rubric.PROFILE_DATA_APP, "name-allowlist: dash",
+    )
+    assert rubric.detect_profile_from_name("nicegui", "pypi") == (
+        rubric.PROFILE_DATA_APP, "name-allowlist: nicegui",
+    )
+
+
 def test_normal_libraries_are_not_detected():
     assert rubric.detect_profile_from_name("lodash", "npm") is None
     assert rubric.detect_profile_from_name("mcp", "pypi") is None  # the SDK itself: library, not server
