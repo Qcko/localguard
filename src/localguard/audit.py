@@ -9,7 +9,7 @@ from .report import AuditReport, Finding
 from .walker import SourceFile, hash_target, walk_target
 
 
-def audit_path(target: Path) -> AuditReport:
+def audit_path(target: Path, *, profile: str = rubric.DEFAULT_PROFILE, profile_reason: str | None = None) -> AuditReport:
     target = target.resolve()
     sources = list(walk_target(target))
     findings = _collect_findings(target, sources)
@@ -20,9 +20,11 @@ def audit_path(target: Path) -> AuditReport:
         target_hash=hash_target(target),
         findings=findings,
         files_audited=len(sources),
+        profile=profile,
+        profile_reason=profile_reason,
         **metadata,
     )
-    report.score = rubric.score(findings)
+    report.score = rubric.score(findings, profile=profile)
     return report
 
 

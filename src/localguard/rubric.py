@@ -13,7 +13,7 @@ class Weight:
     cap: int
 
 
-DEFAULT_WEIGHTS: dict[SurfaceKind, Weight] = {
+PLUGIN_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.OUTBOUND_NETWORK: Weight(5, 25),
     SurfaceKind.OUTBOUND_DYNAMIC: Weight(10, 40),
     SurfaceKind.LISTENING_PORT: Weight(15, 45),
@@ -28,11 +28,49 @@ DEFAULT_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
 }
 
+# An MCP server's purpose is to expose tools to a model: spawning subprocesses
+# (stdio transport), listening on ports (HTTP/SSE transport), reaching outbound
+# (HTTP client tools, web-search tools), and writing files (filesystem servers)
+# are all *features*, not red flags. Relax those surfaces; keep strict on the
+# ones that signal supply-chain trouble regardless of role (obfuscation, secret
+# reads, hardcoded C2-style hosts, prompt-injection-shaped tool descriptions,
+# MCP transport config drift, data-exfil identifier patterns).
+MCP_SERVER_WEIGHTS: dict[SurfaceKind, Weight] = {
+    SurfaceKind.OUTBOUND_NETWORK: Weight(2, 10),
+    SurfaceKind.OUTBOUND_DYNAMIC: Weight(4, 20),
+    SurfaceKind.LISTENING_PORT: Weight(0, 0),
+    SurfaceKind.SUBPROCESS: Weight(5, 20),
+    SurfaceKind.FS_WRITE: Weight(2, 10),
+    SurfaceKind.ENV_SECRET_READ: Weight(10, 20),
+    SurfaceKind.HARDCODED_HOST: Weight(2, 10),
+    SurfaceKind.TELEMETRY_ENDPOINT: Weight(10, 20),
+    SurfaceKind.OBFUSCATION: Weight(8, 60),
+    SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
+    SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
+    SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+}
+
+PROFILE_PLUGIN = "plugin"
+PROFILE_MCP_SERVER = "mcp-server"
+DEFAULT_PROFILE = PROFILE_PLUGIN
+
+PROFILE_WEIGHTS: dict[str, dict[SurfaceKind, Weight]] = {
+    PROFILE_PLUGIN: PLUGIN_WEIGHTS,
+    PROFILE_MCP_SERVER: MCP_SERVER_WEIGHTS,
+}
+
+# Backwards-compat alias for any external caller.
+DEFAULT_WEIGHTS = PLUGIN_WEIGHTS
+
 STARTING_SCORE = 100
 
 
-def score(findings: list[Finding], weights: dict[SurfaceKind, Weight] | None = None) -> ScoreBreakdown:
-    weights = weights or DEFAULT_WEIGHTS
+def weights_for(profile: str) -> dict[SurfaceKind, Weight]:
+    return PROFILE_WEIGHTS.get(profile, PLUGIN_WEIGHTS)
+
+
+def score(findings: list[Finding], weights: dict[SurfaceKind, Weight] | None = None, *, profile: str = DEFAULT_PROFILE) -> ScoreBreakdown:
+    weights = weights or weights_for(profile)
     runtime = [f for f in findings if walker.find_context(f.file) == "runtime"]
     counts = _count_by_kind(runtime)
     deductions = _build_deductions(counts, weights)

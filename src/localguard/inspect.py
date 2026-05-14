@@ -6,12 +6,13 @@ from . import audit, fetch
 from .report import AuditReport
 
 
-def inspect(raw_spec: str, ecosystem: str | None = None, cache_root: Path | None = None) -> tuple[AuditReport, fetch.PackageSpec, Path]:
+def inspect(raw_spec: str, ecosystem: str | None = None, cache_root: Path | None = None, *, profile: str | None = None, profile_reason: str | None = None) -> tuple[AuditReport, fetch.PackageSpec, Path]:
+    from . import rubric
     cache_root = cache_root or fetch.DEFAULT_CACHE_ROOT
     spec = fetch.parse_spec(raw_spec, ecosystem_override=ecosystem)
     unpacked = fetch.fetch_package(spec, cache_root=cache_root)
     audit_root = _pick_audit_root(unpacked, spec.ecosystem)
-    report = audit.audit_path(audit_root)
+    report = audit.audit_path(audit_root, profile=profile or rubric.DEFAULT_PROFILE, profile_reason=profile_reason)
     _override_metadata(report, spec)
     return report, spec, audit_root
 

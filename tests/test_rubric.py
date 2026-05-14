@@ -29,3 +29,37 @@ def test_obfuscation_five_findings_still_acceptable_band():
 def test_obfuscation_many_findings_hit_low_score():
     breakdown = rubric.score(_obf(20))
     assert breakdown.final_score < 50
+
+
+def _surf(kind: SurfaceKind, n: int) -> list[Finding]:
+    return [Finding(kind=kind, file="pkg/runtime.py", line=i + 1, detail="", confidence="literal", extra={}) for i in range(n)]
+
+
+def test_mcp_server_profile_relaxes_listening_port():
+    findings = _surf(SurfaceKind.LISTENING_PORT, 5)
+    plugin = rubric.score(findings, profile=rubric.PROFILE_PLUGIN)
+    server = rubric.score(findings, profile=rubric.PROFILE_MCP_SERVER)
+    assert plugin.final_score < server.final_score
+    assert server.final_score == 100  # listening_port is zero-weight under mcp-server
+
+
+def test_mcp_server_profile_relaxes_subprocess():
+    findings = _surf(SurfaceKind.SUBPROCESS, 4)
+    plugin = rubric.score(findings, profile=rubric.PROFILE_PLUGIN)
+    server = rubric.score(findings, profile=rubric.PROFILE_MCP_SERVER)
+    assert plugin.final_score == 100 - 40  # cap
+    assert server.final_score == 100 - 20  # mcp-server cap (5*4=20, under cap 20)
+
+
+def test_mcp_server_profile_stays_strict_on_obfuscation():
+    findings = _surf(SurfaceKind.OBFUSCATION, 10)
+    plugin = rubric.score(findings, profile=rubric.PROFILE_PLUGIN)
+    server = rubric.score(findings, profile=rubric.PROFILE_MCP_SERVER)
+    assert plugin.final_score == server.final_score
+
+
+def test_unknown_profile_falls_back_to_plugin_weights():
+    findings = _surf(SurfaceKind.LISTENING_PORT, 5)
+    bogus = rubric.score(findings, profile="not-a-real-profile")
+    plugin = rubric.score(findings, profile=rubric.PROFILE_PLUGIN)
+    assert bogus.final_score == plugin.final_score

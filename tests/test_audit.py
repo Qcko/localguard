@@ -11,6 +11,20 @@ def kinds_of(report) -> set[str]:
     return {f.kind.value for f in report.findings}
 
 
+def test_audit_path_defaults_to_plugin_profile():
+    report = audit.audit_path(FIXTURES / "clean_pkg")
+    assert report.profile == "plugin"
+    assert report.profile_reason is None
+    assert report.to_dict()["profile"] == "plugin"
+
+
+def test_audit_path_stamps_mcp_server_profile():
+    report = audit.audit_path(FIXTURES / "clean_pkg", profile="mcp-server", profile_reason="manual: --profile mcp-server")
+    assert report.profile == "mcp-server"
+    assert report.profile_reason == "manual: --profile mcp-server"
+    assert report.to_dict()["profile"] == "mcp-server"
+
+
 def test_clean_pkg_has_no_dangerous_surface():
     report = audit.audit_path(FIXTURES / "clean_pkg")
     assert report.ecosystem == "pypi"

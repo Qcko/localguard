@@ -54,6 +54,8 @@ class AuditReport:
     name: str | None = None
     version: str | None = None
     files_audited: int = 0
+    profile: str = "plugin"
+    profile_reason: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -63,6 +65,8 @@ class AuditReport:
             "name": self.name,
             "version": self.version,
             "files_audited": self.files_audited,
+            "profile": self.profile,
+            "profile_reason": self.profile_reason,
             "score": asdict(self.score) if self.score else None,
             "findings": [_finding_to_dict(f) for f in self.findings],
         }
