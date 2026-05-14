@@ -36,6 +36,7 @@ def refresh(
     *,
     ecosystem: str | None = None,
     name_pattern: str | None = None,
+    status: str | None = None,
     dry_run: bool = False,
     redetect_profile: bool = False,
     library_root: Path | None = None,
@@ -45,6 +46,8 @@ def refresh(
     rows = manifest.iter_library(library_root=library_root, ecosystem=ecosystem)
     if name_pattern:
         rows = [r for r in rows if name_pattern.lower() in (r.get("name") or "").lower()]
+    if status:
+        rows = [r for r in rows if r.get("status") == status]
     outcomes: list[RefreshOutcome] = []
     for row in rows:
         outcome = _refresh_one(row, dry_run=dry_run, redetect_profile=redetect_profile, library_root=library_root)

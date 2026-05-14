@@ -314,6 +314,7 @@ def _add_library(sub: argparse._SubParsersAction) -> None:
     p_refresh = lib_sub.add_parser("refresh", help="Re-audit every baselined package at its stored version and rewrite the report (use after detector or rubric changes).")
     p_refresh.add_argument("--ecosystem", choices=["pypi", "npm"], default=None)
     p_refresh.add_argument("--name", default=None, help="Substring filter on package name.")
+    p_refresh.add_argument("--status", choices=["accepted", "blocked-role-typical", "blocked-suspicious"], default=None, help="Filter to entries with this library status. Useful for re-evaluating blocked entries after a profile-detection improvement or after raising/lowering LOCALGUARD_MIN_SCORE.")
     p_refresh.add_argument("--dry-run", action="store_true")
     p_refresh.add_argument("--redetect-profile", action="store_true", help="Discard stored profile and re-run detection (use to migrate legacy entries or after a detection-rule change).")
     p_refresh.set_defaults(handler=_handle_library_refresh)
@@ -402,7 +403,7 @@ def _handle_library_refresh(args: argparse.Namespace) -> int:
             sys.stdout.write(f"  {verb}: {o.ecosystem}/{o.name}=={o.version}{delta}\n")
         elif o.status == "error":
             sys.stdout.write(f"  SKIPPED: {o.ecosystem}/{o.name}=={o.version} ({o.error})\n")
-    summary = library_refresh_mod.refresh(ecosystem=args.ecosystem, name_pattern=args.name, dry_run=args.dry_run, redetect_profile=args.redetect_profile, on_progress=report_outcome)
+    summary = library_refresh_mod.refresh(ecosystem=args.ecosystem, name_pattern=args.name, status=args.status, dry_run=args.dry_run, redetect_profile=args.redetect_profile, on_progress=report_outcome)
     sys.stdout.write(f"\n{summary.refreshed} refreshed, {summary.errors} errors")
     if args.dry_run:
         sys.stdout.write("  (dry-run)")
