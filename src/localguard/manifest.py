@@ -81,6 +81,38 @@ def latest_known_good(name: str, ecosystem: str, library_root: Path | None = Non
     return None
 
 
+def prior_blocked_encounters(name: str, ecosystem: str, library_root: Path | None = None) -> list[dict]:
+    """List of blocked library entries (any version) for this package.
+
+    Returned entries are summary dicts with name / version / status /
+    score / role_typical_share. Used by the verdict path to surface
+    "you have a prior blocked encounter at v1.0" historical context
+    when re-encountering a package whose previous version was declined.
+    """
+    library_root = library_root or DEFAULT_LIBRARY_ROOT
+    name_root = library_root / ecosystem / name
+    if not name_root.exists():
+        return []
+    out: list[dict] = []
+    for report_path in name_root.rglob("*.json"):
+        if report_path.name == "_index.json":
+            continue
+        report = _read_json(report_path)
+        if not report:
+            continue
+        status = report.get("status") or "accepted"
+        if status == "accepted":
+            continue
+        out.append({
+            "name": report.get("name") or name,
+            "version": report.get("version"),
+            "status": status,
+            "score": (report.get("score") or {}).get("final_score"),
+            "role_typical_share": (report.get("score") or {}).get("role_typical_share", 0.0),
+        })
+    return out
+
+
 def library_lookup(target_hash: str, name: str | None, ecosystem: str, library_root: Path | None = None) -> dict | None:
     library_root = library_root or DEFAULT_LIBRARY_ROOT
     if not name:

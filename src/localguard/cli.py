@@ -40,7 +40,51 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_doctor(sub)
     _add_hook_bash(sub)
     _add_profiles(sub)
+    _add_config(sub)
     return parser
+
+
+def _add_config(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser("config", help="Inspect the effective LocalGuard configuration (score thresholds, library root, etc.).")
+    cfg_sub = p.add_subparsers(dest="config_command", required=True)
+    p_show = cfg_sub.add_parser("show", help="Print the active configuration values and where they came from (env override vs builtin default).")
+    p_show.add_argument("--json", action="store_true")
+    p_show.set_defaults(handler=_handle_config_show)
+
+
+def _handle_config_show(args: argparse.Namespace) -> int:
+    import os
+    entries = [
+        {
+            "key": "min_score",
+            "value": preflight_mod.DEFAULT_MIN_SCORE,
+            "env_var": "LOCALGUARD_MIN_SCORE",
+            "builtin_default": preflight_mod._BUILTIN_MIN_SCORE,
+            "source": "env" if os.environ.get("LOCALGUARD_MIN_SCORE") else "builtin",
+        },
+        {
+            "key": "auto_accept_score",
+            "value": preflight_mod.DEFAULT_AUTO_ACCEPT_SCORE,
+            "env_var": "LOCALGUARD_AUTO_ACCEPT_SCORE",
+            "builtin_default": preflight_mod._BUILTIN_AUTO_ACCEPT_SCORE,
+            "source": "env" if os.environ.get("LOCALGUARD_AUTO_ACCEPT_SCORE") else "builtin",
+        },
+        {
+            "key": "library_root",
+            "value": str(manifest.DEFAULT_LIBRARY_ROOT),
+            "env_var": "LOCALGUARD_LIBRARY",
+            "builtin_default": r"E:\localguard\library",
+            "source": "env" if os.environ.get("LOCALGUARD_LIBRARY") else "builtin",
+        },
+    ]
+    if args.json:
+        _emit_json(entries, pretty=True)
+        return 0
+    sys.stdout.write(f"{'KEY':<22} {'VALUE':<40} {'SOURCE':<8} ENV VAR\n")
+    for e in entries:
+        sys.stdout.write(f"{e['key']:<22} {str(e['value']):<40} {e['source']:<8} {e['env_var']}\n")
+    sys.stdout.write("\nOverride a value by setting the env var (e.g. `setx LOCALGUARD_MIN_SCORE 60` on Windows).\n")
+    return 0
 
 
 def _add_profiles(sub: argparse._SubParsersAction) -> None:
@@ -560,7 +604,8 @@ def _add_preflight(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser("preflight", help="Audit + library diff a package spec; exit non-zero if unsafe.")
     p.add_argument("spec")
     p.add_argument("--ecosystem", choices=["pypi", "npm"], default=None)
-    p.add_argument("--min-score", type=int, default=preflight_mod.DEFAULT_MIN_SCORE)
+    p.add_argument("--min-score", type=int, default=preflight_mod.DEFAULT_MIN_SCORE, help=f"Block when score is below this threshold. Default: {preflight_mod.DEFAULT_MIN_SCORE} (override globally with LOCALGUARD_MIN_SCORE).")
+    p.add_argument("--auto-accept-score", type=int, default=preflight_mod.DEFAULT_AUTO_ACCEPT_SCORE, help=f"Auto-baseline a first-encounter package if its score meets or exceeds this value. Default: {preflight_mod.DEFAULT_AUTO_ACCEPT_SCORE} (override globally with LOCALGUARD_AUTO_ACCEPT_SCORE).")
     p.add_argument("--accept-new", action="store_true", help="Auto-pin a first-time-seen package if it meets the score threshold.")
     p.add_argument("--json", action="store_true")
     _add_profile_arg(p)
@@ -729,6 +774,7 @@ def _handle_preflight(args: argparse.Namespace) -> int:
         args.spec,
         ecosystem=args.ecosystem,
         min_score=args.min_score,
+        auto_accept_score=args.auto_accept_score,
         accept_new=args.accept_new,
         profile=profile,
         profile_reason=reason,

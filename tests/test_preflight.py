@@ -159,6 +159,30 @@ def test_pinned_surface_counts_still_block_when_exceeded(tmp_path: Path):
         assert verdict.status == "drift"
 
 
+def test_first_encounter_surfaces_prior_blocked_history(tmp_path: Path):
+    """When a new version of a previously-blocked package arrives, the
+    verdict path surfaces the blocked history in the reasons -- the user
+    sees `prior blocked encounters: 0.1.0 (blocked-suspicious, share=20%)`
+    in the output and can compare current to historical review decisions."""
+    cache_root = tmp_path / "cache"
+    library_root = tmp_path / "lib"
+    # Seed a prior blocked entry for drifty-pkg==0.1.0
+    blocked = audit.audit_path(FIXTURES / "tampered_v1").to_dict()
+    blocked["name"] = "drifty-pkg"
+    blocked["version"] = "0.1.0"
+    blocked["status"] = "blocked-suspicious"
+    manifest.write_library_entry(blocked, library_root=library_root)
+    # New version arrives; cache it.
+    _seed_cache(cache_root, FIXTURES / "tampered_v2", "drifty-pkg", "0.2.0")
+
+    verdict = preflight.preflight("drifty-pkg==0.2.0", cache_root=cache_root, library_root=library_root, accept_new=True)
+
+    # The verdict should call out the prior blocked encounter for the
+    # 0.1.0 version, regardless of whether 0.2.0 itself blocks.
+    assert any("prior blocked encounters" in r for r in verdict.reasons), verdict.reasons
+    assert any("0.1.0" in r for r in verdict.reasons)
+
+
 def test_latest_known_good_skips_blocked_entries(tmp_path: Path):
     """When the library has both blocked and accepted entries for a package,
     latest_known_good returns the most recent ACCEPTED one."""

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
@@ -7,8 +8,27 @@ from typing import Any
 from . import diff, fetch, inspect, manifest
 
 
-DEFAULT_MIN_SCORE = 50
-DEFAULT_AUTO_ACCEPT_SCORE = 90
+_BUILTIN_MIN_SCORE = 50
+_BUILTIN_AUTO_ACCEPT_SCORE = 90
+
+
+def _env_int(name: str, default: int) -> int:
+    """Read a positive integer override from the environment, fall back to
+    the builtin default if unset or unparseable. Mirrors the existing
+    LOCALGUARD_LIBRARY env-var pattern for installation roots.
+    """
+    raw = os.environ.get(name)
+    if raw is None or raw.strip() == "":
+        return default
+    try:
+        value = int(raw.strip())
+    except ValueError:
+        return default
+    return value
+
+
+DEFAULT_MIN_SCORE = _env_int("LOCALGUARD_MIN_SCORE", _BUILTIN_MIN_SCORE)
+DEFAULT_AUTO_ACCEPT_SCORE = _env_int("LOCALGUARD_AUTO_ACCEPT_SCORE", _BUILTIN_AUTO_ACCEPT_SCORE)
 HIGH_RISK_KINDS = {
     "outbound_network",
     "outbound_dynamic",
@@ -100,6 +120,22 @@ def verdict_for_report(report_dict: dict, spec: fetch.PackageSpec, *, min_score:
 
 def _first_encounter_verdict(report_dict, spec, score, min_score, accept_new, auto_accept_score, library_root) -> Verdict:
     reasons: list[str] = ["no prior baseline in library"]
+    # Surface prior-blocked history for this package name (any version).
+    # `latest_known_good` filters out blocked entries from baseline lookup,
+    # so we land here on first-encounter even when we've previously
+    # declined a different version. The user benefits from seeing the
+    # history when deciding whether this version should be treated
+    # differently.
+    prior_blocked = manifest.prior_blocked_encounters(spec.name, spec.ecosystem, library_root=library_root)
+    if prior_blocked:
+        # Highest-share blocked entries first -- most informative for
+        # comparing the current encounter to past review decisions.
+        prior_blocked.sort(key=lambda e: e.get("role_typical_share", 0.0), reverse=True)
+        summary = ", ".join(
+            f"{e.get('version') or '?'} ({e.get('status')}, share={e.get('role_typical_share', 0.0):.0%})"
+            for e in prior_blocked[:5]
+        )
+        reasons.append(f"prior blocked encounters for {spec.name}: {summary}")
     if score < min_score:
         # Auto-write a blocked entry classified by role-typicality so the next
         # encounter has prior review context. latest_known_good filters these
