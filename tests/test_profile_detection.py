@@ -138,11 +138,26 @@ def test_setuptools_wheel_etc_detect_as_build_tool():
     )
 
 
+def test_numpy_pandas_etc_detect_as_data_science():
+    assert rubric.detect_profile_from_name("numpy", "pypi") == (
+        rubric.PROFILE_DATA_SCIENCE, "name-allowlist: numpy",
+    )
+    assert rubric.detect_profile_from_name("pandas", "pypi") == (
+        rubric.PROFILE_DATA_SCIENCE, "name-allowlist: pandas",
+    )
+    assert rubric.detect_profile_from_name("scikit-learn", "pypi") == (
+        rubric.PROFILE_DATA_SCIENCE, "name-allowlist: scikit-learn",
+    )
+    assert rubric.detect_profile_from_name("matplotlib", "pypi") == (
+        rubric.PROFILE_DATA_SCIENCE, "name-allowlist: matplotlib",
+    )
+
+
 def test_normal_libraries_are_not_detected():
     assert rubric.detect_profile_from_name("lodash", "npm") is None
     assert rubric.detect_profile_from_name("mcp", "pypi") is None  # the SDK itself: library, not server
     assert rubric.detect_profile_from_name("@modelcontextprotocol/sdk", "npm") is None
-    assert rubric.detect_profile_from_name("numpy", "pypi") is None
+    assert rubric.detect_profile_from_name("pyyaml", "pypi") is None
 
 
 def test_empty_or_unknown_ecosystem_returns_none():

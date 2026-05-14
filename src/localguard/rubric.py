@@ -70,6 +70,30 @@ CLI_FRAMEWORK_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
 }
 
+# A numerical/data-science library's purpose is parallel compute (joblib /
+# multiprocessing forks -> subprocess), saving arrays/dataframes/models/plots
+# (fs_write), and optionally downloading reference datasets (outbound_dynamic
+# pointing at well-known dataset hosts). Relax those surfaces.
+# Stay strict on outbound_network at the plugin baseline (a numerical library
+# making unsolicited calls is still suspicious), on listening_port, on
+# obfuscation (numpy/pandas DO have legitimate eval -- df.eval, df.query,
+# ufunc string compilation -- but so might an attacker; force manual review),
+# and on the strict-by-design surfaces.
+DATA_SCIENCE_WEIGHTS: dict[SurfaceKind, Weight] = {
+    SurfaceKind.OUTBOUND_NETWORK: Weight(5, 25),
+    SurfaceKind.OUTBOUND_DYNAMIC: Weight(4, 20),
+    SurfaceKind.LISTENING_PORT: Weight(15, 45),
+    SurfaceKind.SUBPROCESS: Weight(5, 20),
+    SurfaceKind.FS_WRITE: Weight(2, 10),
+    SurfaceKind.ENV_SECRET_READ: Weight(10, 20),
+    SurfaceKind.HARDCODED_HOST: Weight(1, 5),
+    SurfaceKind.TELEMETRY_ENDPOINT: Weight(10, 20),
+    SurfaceKind.OBFUSCATION: Weight(8, 60),
+    SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
+    SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
+    SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+}
+
 # A Python build backend / packaging tool's purpose is to invoke compilers and
 # linkers (subprocess), write wheels and source distributions to disk
 # (fs_write), and fetch build dependencies / index metadata over the network
@@ -141,6 +165,7 @@ PROFILE_CLI_FRAMEWORK = "cli-framework"
 PROFILE_NETWORK_LIBRARY = "network-library"
 PROFILE_WEB_SERVER = "web-server"
 PROFILE_BUILD_TOOL = "build-tool"
+PROFILE_DATA_SCIENCE = "data-science"
 DEFAULT_PROFILE = PROFILE_PLUGIN
 
 PROFILE_WEIGHTS: dict[str, dict[SurfaceKind, Weight]] = {
@@ -150,6 +175,7 @@ PROFILE_WEIGHTS: dict[str, dict[SurfaceKind, Weight]] = {
     PROFILE_NETWORK_LIBRARY: NETWORK_LIBRARY_WEIGHTS,
     PROFILE_WEB_SERVER: WEB_SERVER_WEIGHTS,
     PROFILE_BUILD_TOOL: BUILD_TOOL_WEIGHTS,
+    PROFILE_DATA_SCIENCE: DATA_SCIENCE_WEIGHTS,
 }
 
 # Backwards-compat alias for any external caller.
@@ -209,6 +235,20 @@ WEB_SERVER_NAMES: set[str] = {
 # purpose. These are transitive deps of essentially every pypi install and the
 # 0-score-blocks-everything outcome under plugin is a real friction point.
 # Canonical (PEP 503) names.
+# Well-known numerical / data-science libraries. Tight allowlist on purpose.
+# Excludes ML frameworks (torch, tensorflow, jax, transformers) which deserve
+# their own profile (GPU binding, CUDA linking, training process forks differ
+# from plain numerical compute). Canonical (PEP 503) names.
+DATA_SCIENCE_NAMES: set[str] = {
+    "numpy", "scipy", "pandas", "polars", "pyarrow",
+    "scikit-learn", "scikit-image",
+    "matplotlib", "seaborn", "plotly", "bokeh",
+    "statsmodels", "sympy", "numba", "numexpr",
+    "dask", "xarray", "h5py", "zarr", "tables",
+    "joblib",
+}
+
+
 BUILD_TOOL_NAMES: set[str] = {
     "setuptools", "wheel", "build", "pip",
     "hatchling", "hatch", "hatch-vcs", "hatch-fancy-pypi-readme",
@@ -239,6 +279,8 @@ def detect_profile_from_name(name: str, ecosystem: str) -> tuple[str, str] | Non
             return PROFILE_WEB_SERVER, f"name-allowlist: {name}"
         if name in BUILD_TOOL_NAMES:
             return PROFILE_BUILD_TOOL, f"name-allowlist: {name}"
+        if name in DATA_SCIENCE_NAMES:
+            return PROFILE_DATA_SCIENCE, f"name-allowlist: {name}"
         return None
     if ecosystem == "npm":
         if name.startswith("@modelcontextprotocol/server-"):

@@ -139,6 +139,32 @@ def test_build_tool_profile_stays_strict_on_obfuscation():
     assert plugin.final_score == bt.final_score
 
 
+def test_data_science_profile_relaxes_subprocess():
+    findings = _surf(SurfaceKind.SUBPROCESS, 5)
+    plugin = rubric.score(findings, profile=rubric.PROFILE_PLUGIN)
+    ds = rubric.score(findings, profile=rubric.PROFILE_DATA_SCIENCE)
+    assert plugin.final_score == 100 - 40
+    assert ds.final_score == 100 - 20
+
+
+def test_data_science_profile_relaxes_fs_write():
+    findings = _surf(SurfaceKind.FS_WRITE, 6)
+    plugin = rubric.score(findings, profile=rubric.PROFILE_PLUGIN)
+    ds = rubric.score(findings, profile=rubric.PROFILE_DATA_SCIENCE)
+    assert ds.final_score > plugin.final_score
+
+
+def test_data_science_profile_stays_strict_on_outbound_and_obfuscation():
+    out = _surf(SurfaceKind.OUTBOUND_NETWORK, 6)
+    obf = _surf(SurfaceKind.OBFUSCATION, 10)
+    plugin_out = rubric.score(out, profile=rubric.PROFILE_PLUGIN)
+    ds_out = rubric.score(out, profile=rubric.PROFILE_DATA_SCIENCE)
+    plugin_obf = rubric.score(obf, profile=rubric.PROFILE_PLUGIN)
+    ds_obf = rubric.score(obf, profile=rubric.PROFILE_DATA_SCIENCE)
+    assert plugin_out.final_score == ds_out.final_score
+    assert plugin_obf.final_score == ds_obf.final_score
+
+
 def test_unknown_profile_falls_back_to_plugin_weights():
     findings = _surf(SurfaceKind.LISTENING_PORT, 5)
     bogus = rubric.score(findings, profile="not-a-real-profile")
