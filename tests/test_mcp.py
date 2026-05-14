@@ -75,6 +75,21 @@ def test_vendored_directories_classified_as_non_runtime():
     # Hyphen-suffixed forms (numpy's vendored-meson, etc.)
     assert walker.find_context("numpy/vendored-meson/meson/mesonbuild/mesonmain.py") == "vendored"
     assert walker.find_context("pkg/_vendor-jaraco/x.py") == "vendored"
+
+
+def test_autogen_files_classified_as_non_runtime():
+    # Filename patterns (protobuf / gRPC)
+    assert walker.find_context("tensorboard/compat/proto/config_pb2.py") == "generated"
+    assert walker.find_context("grpc/health/v1/health_pb2_grpc.py") == "generated"
+    assert walker.find_context("foo/bar_pb2.pyi") == "generated"
+    assert walker.find_context("foo/bar_grpc_pb.ts") == "generated"
+    # Directory patterns
+    assert walker.find_context("src/_generated/api.ts") == "generated"
+    assert walker.find_context("src/generated/api.py") == "generated"
+    assert walker.find_context("src/__generated__/api.py") == "generated"
+    # Not autogen
+    assert walker.find_context("src/api_pb2_helper.py") == "runtime"  # contains _pb2 but not suffix
+    assert walker.find_context("src/runtime.py") == "runtime"
     # Not vendored -- internals, not bundled third-party
     assert walker.find_context("pkg/_internal/x.py") == "runtime"
     assert walker.find_context("pkg/runtime.py") == "runtime"

@@ -16,6 +16,9 @@ I18N_DIR_NAMES = {"locales", "locale", "i18n", "lang", "langs", "translations", 
 # Conventions covered: setuptools/pip's `_vendor` and `_distutils`, generic
 # `vendor`/`vendored`/`bundled`, the `third_party` variants common in larger
 # projects. Tight set on purpose -- this is a context, not an "ignore" knob.
+# Auto-generated stub directories. Files matching well-known autogen
+# filename patterns (see _is_autogen_file) are also flagged.
+GENERATED_DIR_NAMES = {"_generated", "__generated__", "generated"}
 VENDORED_DIR_NAMES = {
     "_vendor", "_vendored", "_distutils",
     "vendor", "vendored", "bundled",
@@ -93,11 +96,31 @@ def find_context(rel: str) -> str:
         return "i18n"
     if any(_is_vendored_part(p) for p in parts[:-1]):
         return "vendored"
+    if any(p.lower() in GENERATED_DIR_NAMES for p in parts[:-1]):
+        return "generated"
+    if _is_autogen_file(name):
+        return "generated"
     if _is_doc_or_meta_file(name) and len(parts) == 1:
         return "docs"
     if name in {"setup.py", "setup.cfg", "pyproject.toml", "package.json", "manifest.in"} and len(parts) == 1:
         return "setup"
     return "runtime"
+
+
+def _is_autogen_file(name: str) -> bool:
+    """Filename-level signals for compiler-emitted stubs.
+
+    Protobuf and gRPC code-gen produce thousands of `*_pb2.py` /
+    `*_pb2_grpc.py` files containing dense descriptor strings that read like
+    obfuscation / dynamic outbound to the surface walkers. These files are
+    not author-written; treat them like vendored code.
+    """
+    n = name.lower()
+    if n.endswith(("_pb2.py", "_pb2_grpc.py", "_pb2.pyi", "_pb2_grpc.pyi")):
+        return True
+    if n.endswith(("_pb.js", "_pb.ts", "_pb.d.ts", "_grpc_pb.js", "_grpc_pb.ts")):
+        return True
+    return False
 
 
 def _is_vendored_part(part: str) -> bool:
