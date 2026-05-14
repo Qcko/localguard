@@ -186,6 +186,28 @@ def test_ml_framework_profile_stays_strict_on_obfuscation():
     assert plugin.final_score == ml.final_score
 
 
+def test_database_driver_profile_relaxes_outbound():
+    findings = _surf(SurfaceKind.OUTBOUND_NETWORK, 10)
+    plugin = rubric.score(findings, profile=rubric.PROFILE_PLUGIN)
+    db = rubric.score(findings, profile=rubric.PROFILE_DATABASE_DRIVER)
+    assert plugin.final_score == 100 - 25
+    assert db.final_score == 100 - 10  # cap 10
+
+
+def test_database_driver_profile_stays_strict_on_listening_port():
+    findings = _surf(SurfaceKind.LISTENING_PORT, 3)
+    plugin = rubric.score(findings, profile=rubric.PROFILE_PLUGIN)
+    db = rubric.score(findings, profile=rubric.PROFILE_DATABASE_DRIVER)
+    assert plugin.final_score == db.final_score
+
+
+def test_database_driver_profile_stays_strict_on_subprocess():
+    findings = _surf(SurfaceKind.SUBPROCESS, 4)
+    plugin = rubric.score(findings, profile=rubric.PROFILE_PLUGIN)
+    db = rubric.score(findings, profile=rubric.PROFILE_DATABASE_DRIVER)
+    assert plugin.final_score == db.final_score
+
+
 def test_unknown_profile_falls_back_to_plugin_weights():
     findings = _surf(SurfaceKind.LISTENING_PORT, 5)
     bogus = rubric.score(findings, profile="not-a-real-profile")

@@ -70,6 +70,32 @@ CLI_FRAMEWORK_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
 }
 
+# A database driver / ORM's purpose is to open outbound connections to a
+# specific protocol on a user-supplied host (DSN parsing -> outbound_dynamic),
+# to read connection credentials from env vars (DATABASE_URL et al), and to
+# parse/execute SQL or DSL (sqlalchemy compiles expression trees via
+# compile()). Relax outbound_network, outbound_dynamic, hardcoded_host, and
+# fs_write (SQLite spool files, connection caches). Stay strict on
+# listening_port (drivers are clients, not servers), subprocess (a database
+# *driver* spawning shells is suspicious), obfuscation (sqlalchemy's
+# legitimate compile() usage would mask attacker payloads on the same
+# surface), env_secret_read (connection strings ARE credentials), and the
+# strict-by-design surfaces.
+DATABASE_DRIVER_WEIGHTS: dict[SurfaceKind, Weight] = {
+    SurfaceKind.OUTBOUND_NETWORK: Weight(2, 10),
+    SurfaceKind.OUTBOUND_DYNAMIC: Weight(4, 20),
+    SurfaceKind.LISTENING_PORT: Weight(15, 45),
+    SurfaceKind.SUBPROCESS: Weight(15, 40),
+    SurfaceKind.FS_WRITE: Weight(2, 10),
+    SurfaceKind.ENV_SECRET_READ: Weight(10, 20),
+    SurfaceKind.HARDCODED_HOST: Weight(1, 5),
+    SurfaceKind.TELEMETRY_ENDPOINT: Weight(10, 20),
+    SurfaceKind.OBFUSCATION: Weight(8, 60),
+    SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
+    SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
+    SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+}
+
 # An ML framework's purpose stretches data-science relaxations further:
 # training forks worker processes (subprocess), opens NCCL/Gloo sockets
 # for distributed training (listening_port), writes checkpoints + logs +
@@ -191,6 +217,7 @@ PROFILE_WEB_SERVER = "web-server"
 PROFILE_BUILD_TOOL = "build-tool"
 PROFILE_DATA_SCIENCE = "data-science"
 PROFILE_ML_FRAMEWORK = "ml-framework"
+PROFILE_DATABASE_DRIVER = "database-driver"
 DEFAULT_PROFILE = PROFILE_PLUGIN
 
 PROFILE_WEIGHTS: dict[str, dict[SurfaceKind, Weight]] = {
@@ -202,6 +229,7 @@ PROFILE_WEIGHTS: dict[str, dict[SurfaceKind, Weight]] = {
     PROFILE_BUILD_TOOL: BUILD_TOOL_WEIGHTS,
     PROFILE_DATA_SCIENCE: DATA_SCIENCE_WEIGHTS,
     PROFILE_ML_FRAMEWORK: ML_FRAMEWORK_WEIGHTS,
+    PROFILE_DATABASE_DRIVER: DATABASE_DRIVER_WEIGHTS,
 }
 
 # Backwards-compat alias for any external caller.
@@ -269,6 +297,41 @@ WEB_SERVER_NAMES: set[str] = {
 # than data-science because training surfaces (distributed sockets, CUDA
 # linking, model-hub downloads) are core to the role. Canonical (PEP 503)
 # names.
+# Well-known database drivers, ORMs, and message-broker clients. Tight
+# allowlist on purpose -- there are MANY niche DB clients and the goal is to
+# cover the high-volume cases without overreaching. Canonical (PEP 503)
+# names.
+DATABASE_DRIVER_NAMES: set[str] = {
+    # PostgreSQL
+    "psycopg", "psycopg-binary", "psycopg-pool",
+    "psycopg2", "psycopg2-binary",
+    "asyncpg",
+    # MySQL / MariaDB
+    "pymysql", "mysqlclient", "mysql-connector-python",
+    "aiomysql", "mariadb",
+    # SQLite extras
+    "aiosqlite", "sqlite-utils",
+    # ORMs and SQL DSLs
+    "sqlalchemy", "alembic", "sqlmodel", "peewee", "tortoise-orm",
+    "databases", "ormar",
+    # MongoDB
+    "pymongo", "motor", "beanie", "mongoengine",
+    # Redis / KV
+    "redis", "hiredis", "aredis", "redis-py-cluster",
+    "valkey",
+    # Other RDBMS / cloud DBs
+    "pyodbc", "cx-oracle", "oracledb", "snowflake-connector-python",
+    "google-cloud-bigquery", "google-cloud-spanner",
+    # NoSQL / search
+    "cassandra-driver", "neo4j", "elasticsearch", "opensearch-py",
+    "elasticsearch-dsl",
+    "clickhouse-driver", "clickhouse-connect",
+    # Message brokers (treated as DB-shaped clients here)
+    "pika", "aio-pika", "kafka-python", "aiokafka", "confluent-kafka",
+    "pulsar-client", "nats-py", "stomp-py",
+}
+
+
 ML_FRAMEWORK_NAMES: set[str] = {
     "torch", "torchvision", "torchaudio", "torchtext",
     "tensorflow", "tensorflow-cpu", "tensorflow-gpu", "tf-keras", "keras",
@@ -326,6 +389,8 @@ def detect_profile_from_name(name: str, ecosystem: str) -> tuple[str, str] | Non
             return PROFILE_DATA_SCIENCE, f"name-allowlist: {name}"
         if name in ML_FRAMEWORK_NAMES:
             return PROFILE_ML_FRAMEWORK, f"name-allowlist: {name}"
+        if name in DATABASE_DRIVER_NAMES:
+            return PROFILE_DATABASE_DRIVER, f"name-allowlist: {name}"
         return None
     if ecosystem == "npm":
         if name.startswith("@modelcontextprotocol/server-"):

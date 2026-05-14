@@ -171,6 +171,24 @@ def test_torch_transformers_etc_detect_as_ml_framework():
     )
 
 
+def test_sqlalchemy_pymongo_etc_detect_as_database_driver():
+    assert rubric.detect_profile_from_name("sqlalchemy", "pypi") == (
+        rubric.PROFILE_DATABASE_DRIVER, "name-allowlist: sqlalchemy",
+    )
+    assert rubric.detect_profile_from_name("psycopg2-binary", "pypi") == (
+        rubric.PROFILE_DATABASE_DRIVER, "name-allowlist: psycopg2-binary",
+    )
+    assert rubric.detect_profile_from_name("pymongo", "pypi") == (
+        rubric.PROFILE_DATABASE_DRIVER, "name-allowlist: pymongo",
+    )
+    assert rubric.detect_profile_from_name("redis", "pypi") == (
+        rubric.PROFILE_DATABASE_DRIVER, "name-allowlist: redis",
+    )
+    assert rubric.detect_profile_from_name("kafka-python", "pypi") == (
+        rubric.PROFILE_DATABASE_DRIVER, "name-allowlist: kafka-python",
+    )
+
+
 def test_normal_libraries_are_not_detected():
     assert rubric.detect_profile_from_name("lodash", "npm") is None
     assert rubric.detect_profile_from_name("mcp", "pypi") is None  # the SDK itself: library, not server
