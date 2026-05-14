@@ -466,6 +466,56 @@ def test_data_app_profile_stays_strict_on_env_secret_data_exfil_and_telemetry():
     assert plugin_tel.final_score == da_tel.final_score
 
 
+def test_workflow_orchestrator_profile_relaxes_subprocess_and_listening_port():
+    findings = _surf(SurfaceKind.SUBPROCESS, 5) + _surf(SurfaceKind.LISTENING_PORT, 3)
+    plugin = rubric.score(findings, profile=rubric.PROFILE_PLUGIN)
+    wo = rubric.score(findings, profile=rubric.PROFILE_WORKFLOW_ORCHESTRATOR)
+    assert wo.final_score > plugin.final_score
+
+
+def test_workflow_orchestrator_profile_stays_strict_on_env_secret():
+    findings = _surf(SurfaceKind.ENV_SECRET_READ, 3)
+    plugin = rubric.score(findings, profile=rubric.PROFILE_PLUGIN)
+    wo = rubric.score(findings, profile=rubric.PROFILE_WORKFLOW_ORCHESTRATOR)
+    assert plugin.final_score == wo.final_score
+
+
+def test_doc_builder_profile_relaxes_subprocess_and_fs_write():
+    sp = _surf(SurfaceKind.SUBPROCESS, 5)
+    fw = _surf(SurfaceKind.FS_WRITE, 8)
+    plugin_sp = rubric.score(sp, profile=rubric.PROFILE_PLUGIN)
+    db_sp = rubric.score(sp, profile=rubric.PROFILE_DOC_BUILDER)
+    plugin_fw = rubric.score(fw, profile=rubric.PROFILE_PLUGIN)
+    db_fw = rubric.score(fw, profile=rubric.PROFILE_DOC_BUILDER)
+    assert db_sp.final_score > plugin_sp.final_score
+    assert db_fw.final_score > plugin_fw.final_score
+
+
+def test_agentic_framework_profile_relaxes_outbound_but_not_env_secret():
+    on = _surf(SurfaceKind.OUTBOUND_NETWORK, 10)
+    env = _surf(SurfaceKind.ENV_SECRET_READ, 3)
+    plugin_on = rubric.score(on, profile=rubric.PROFILE_PLUGIN)
+    ag_on = rubric.score(on, profile=rubric.PROFILE_AGENTIC_FRAMEWORK)
+    plugin_env = rubric.score(env, profile=rubric.PROFILE_PLUGIN)
+    ag_env = rubric.score(env, profile=rubric.PROFILE_AGENTIC_FRAMEWORK)
+    assert ag_on.final_score > plugin_on.final_score
+    assert plugin_env.final_score == ag_env.final_score
+
+
+def test_gui_toolkit_profile_relaxes_subprocess_and_listening_port():
+    findings = _surf(SurfaceKind.SUBPROCESS, 5) + _surf(SurfaceKind.LISTENING_PORT, 3)
+    plugin = rubric.score(findings, profile=rubric.PROFILE_PLUGIN)
+    gui = rubric.score(findings, profile=rubric.PROFILE_GUI_TOOLKIT)
+    assert gui.final_score > plugin.final_score
+
+
+def test_gui_toolkit_profile_stays_strict_on_outbound():
+    findings = _surf(SurfaceKind.OUTBOUND_NETWORK, 6)
+    plugin = rubric.score(findings, profile=rubric.PROFILE_PLUGIN)
+    gui = rubric.score(findings, profile=rubric.PROFILE_GUI_TOOLKIT)
+    assert plugin.final_score == gui.final_score
+
+
 def test_unknown_profile_falls_back_to_plugin_weights():
     findings = _surf(SurfaceKind.LISTENING_PORT, 5)
     bogus = rubric.score(findings, profile="not-a-real-profile")

@@ -348,6 +348,72 @@ def test_gradio_streamlit_etc_detect_as_data_app():
     )
 
 
+def test_airflow_prefect_etc_detect_as_workflow_orchestrator():
+    assert rubric.detect_profile_from_name("airflow", "pypi") == (
+        rubric.PROFILE_WORKFLOW_ORCHESTRATOR, "name-allowlist: airflow",
+    )
+    assert rubric.detect_profile_from_name("prefect", "pypi") == (
+        rubric.PROFILE_WORKFLOW_ORCHESTRATOR, "name-allowlist: prefect",
+    )
+    assert rubric.detect_profile_from_name("dagster", "pypi") == (
+        rubric.PROFILE_WORKFLOW_ORCHESTRATOR, "name-allowlist: dagster",
+    )
+    assert rubric.detect_profile_from_name("luigi", "pypi") == (
+        rubric.PROFILE_WORKFLOW_ORCHESTRATOR, "name-allowlist: luigi",
+    )
+
+
+def test_sphinx_mkdocs_etc_detect_as_doc_builder():
+    assert rubric.detect_profile_from_name("sphinx", "pypi") == (
+        rubric.PROFILE_DOC_BUILDER, "name-allowlist: sphinx",
+    )
+    assert rubric.detect_profile_from_name("mkdocs", "pypi") == (
+        rubric.PROFILE_DOC_BUILDER, "name-allowlist: mkdocs",
+    )
+    assert rubric.detect_profile_from_name("myst-parser", "pypi") == (
+        rubric.PROFILE_DOC_BUILDER, "name-allowlist: myst-parser",
+    )
+
+
+def test_langchain_llamaindex_etc_detect_as_agentic_framework():
+    assert rubric.detect_profile_from_name("langchain", "pypi") == (
+        rubric.PROFILE_AGENTIC_FRAMEWORK, "name-allowlist: langchain",
+    )
+    assert rubric.detect_profile_from_name("llama-index", "pypi") == (
+        rubric.PROFILE_AGENTIC_FRAMEWORK, "name-allowlist: llama-index",
+    )
+    assert rubric.detect_profile_from_name("crewai", "pypi") == (
+        rubric.PROFILE_AGENTIC_FRAMEWORK, "name-allowlist: crewai",
+    )
+    assert rubric.detect_profile_from_name("dspy", "pypi") == (
+        rubric.PROFILE_AGENTIC_FRAMEWORK, "name-allowlist: dspy",
+    )
+
+
+def test_kivy_pyqt_etc_detect_as_gui_toolkit():
+    assert rubric.detect_profile_from_name("kivy", "pypi") == (
+        rubric.PROFILE_GUI_TOOLKIT, "name-allowlist: kivy",
+    )
+    assert rubric.detect_profile_from_name("pyqt6", "pypi") == (
+        rubric.PROFILE_GUI_TOOLKIT, "name-allowlist: pyqt6",
+    )
+    assert rubric.detect_profile_from_name("wxpython", "pypi") == (
+        rubric.PROFILE_GUI_TOOLKIT, "name-allowlist: wxpython",
+    )
+
+
+def test_chromadb_pinecone_etc_detect_as_database_driver():
+    assert rubric.detect_profile_from_name("chromadb", "pypi") == (
+        rubric.PROFILE_DATABASE_DRIVER, "name-allowlist: chromadb",
+    )
+    assert rubric.detect_profile_from_name("weaviate-client", "pypi") == (
+        rubric.PROFILE_DATABASE_DRIVER, "name-allowlist: weaviate-client",
+    )
+    assert rubric.detect_profile_from_name("lancedb", "pypi") == (
+        rubric.PROFILE_DATABASE_DRIVER, "name-allowlist: lancedb",
+    )
+
+
 def test_normal_libraries_are_not_detected():
     assert rubric.detect_profile_from_name("lodash", "npm") is None
     assert rubric.detect_profile_from_name("mcp", "pypi") is None  # the SDK itself: library, not server

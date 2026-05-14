@@ -70,6 +70,101 @@ CLI_FRAMEWORK_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
 }
 
+# A workflow orchestrator (airflow, prefect, dagster, luigi, kedro,
+# snakemake). DAG-shaped pipelines: each task runs in a worker process
+# (subprocess), the scheduler binds a UI/API port (listening_port),
+# task state + artifacts get written everywhere (fs_write), the
+# scheduler talks to a metadata DB and a broker (outbound,
+# outbound_dynamic, hardcoded_host). Distinct from task-queue: queues
+# are stateless job runners; orchestrators are stateful DAG schedulers
+# with retry policies, lineage, and a UI surface. Relax the operational
+# surfaces. Stay strict on env_secret_read (DB / broker / cloud creds),
+# obfuscation (DAGs use compile() for Python-operator user code, but
+# the shape split already lightens the legitimate-dynamic case), and
+# the strict-by-design surfaces.
+WORKFLOW_ORCHESTRATOR_WEIGHTS: dict[SurfaceKind, Weight] = {
+    SurfaceKind.OUTBOUND_NETWORK: Weight(2, 10),
+    SurfaceKind.OUTBOUND_DYNAMIC: Weight(4, 20),
+    SurfaceKind.LISTENING_PORT: Weight(5, 20),
+    SurfaceKind.SUBPROCESS: Weight(5, 20),
+    SurfaceKind.FS_WRITE: Weight(2, 10),
+    SurfaceKind.ENV_SECRET_READ: Weight(10, 20),
+    SurfaceKind.HARDCODED_HOST: Weight(1, 5),
+    SurfaceKind.TELEMETRY_ENDPOINT: Weight(10, 20),
+    SurfaceKind.OBFUSCATION: Weight(8, 60),
+    SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
+    SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
+    SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+}
+
+# A documentation builder (sphinx, mkdocs, docutils, myst-parser, pdoc).
+# Renders source into HTML/PDF/manpages, runs LaTeX / image converters
+# (subprocess), writes output trees (fs_write), fetches intersphinx
+# inventories and external link checks (outbound), loads plugins via
+# importlib + exec (obfuscation but dynamic-shape already lightened).
+# Stays strict on env_secret_read and the strict-by-design surfaces.
+DOC_BUILDER_WEIGHTS: dict[SurfaceKind, Weight] = {
+    SurfaceKind.OUTBOUND_NETWORK: Weight(2, 10),
+    SurfaceKind.OUTBOUND_DYNAMIC: Weight(4, 20),
+    SurfaceKind.LISTENING_PORT: Weight(15, 45),
+    SurfaceKind.SUBPROCESS: Weight(5, 20),
+    SurfaceKind.FS_WRITE: Weight(2, 10),
+    SurfaceKind.ENV_SECRET_READ: Weight(10, 20),
+    SurfaceKind.HARDCODED_HOST: Weight(1, 5),
+    SurfaceKind.TELEMETRY_ENDPOINT: Weight(10, 20),
+    SurfaceKind.OBFUSCATION: Weight(8, 60),
+    SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
+    SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
+    SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+}
+
+# An agentic / LLM-orchestration framework (langchain ecosystem, llama-index
+# family, dspy, autogen, semantic-kernel, smolagents, crewai). The role is
+# building chains and agents that call LLM APIs with constructed prompts.
+# Heavy outbound to configurable model endpoints (outbound + outbound_dynamic
+# + hardcoded_host). Modest fs_write (chat history, vector caches). Stays
+# STRICT on subprocess (agent libs shouldn't shell out), listening_port,
+# env_secret_read (OPENAI_API_KEY / ANTHROPIC_API_KEY ARE credentials),
+# obfuscation, telemetry, data_exfil, prompt_injection_hint -- prompt
+# injection is uniquely relevant here, an agent lib carrying suspicious
+# prompt-shaped strings IS a signal.
+AGENTIC_FRAMEWORK_WEIGHTS: dict[SurfaceKind, Weight] = {
+    SurfaceKind.OUTBOUND_NETWORK: Weight(2, 10),
+    SurfaceKind.OUTBOUND_DYNAMIC: Weight(4, 25),
+    SurfaceKind.LISTENING_PORT: Weight(15, 45),
+    SurfaceKind.SUBPROCESS: Weight(15, 40),
+    SurfaceKind.FS_WRITE: Weight(2, 10),
+    SurfaceKind.ENV_SECRET_READ: Weight(10, 20),
+    SurfaceKind.HARDCODED_HOST: Weight(1, 5),
+    SurfaceKind.TELEMETRY_ENDPOINT: Weight(10, 20),
+    SurfaceKind.OBFUSCATION: Weight(8, 60),
+    SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
+    SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
+    SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+}
+
+# A native GUI toolkit (kivy, pyqt5/6, pyside2/6, wxpython, dearpygui,
+# customtkinter, flet, ttkbootstrap). Binds local IPC ports for
+# hot-reload / browser bridges (listening_port), spawns native helpers
+# (subprocess), writes preferences and asset caches (fs_write). Stays
+# STRICT on outbound (a desktop GUI library reaching the network is
+# suspicious), env_secret_read, obfuscation, and the strict-by-design
+# surfaces.
+GUI_TOOLKIT_WEIGHTS: dict[SurfaceKind, Weight] = {
+    SurfaceKind.OUTBOUND_NETWORK: Weight(5, 25),
+    SurfaceKind.OUTBOUND_DYNAMIC: Weight(10, 40),
+    SurfaceKind.LISTENING_PORT: Weight(5, 20),
+    SurfaceKind.SUBPROCESS: Weight(5, 20),
+    SurfaceKind.FS_WRITE: Weight(2, 10),
+    SurfaceKind.ENV_SECRET_READ: Weight(10, 20),
+    SurfaceKind.HARDCODED_HOST: Weight(1, 5),
+    SurfaceKind.TELEMETRY_ENDPOINT: Weight(10, 20),
+    SurfaceKind.OBFUSCATION: Weight(8, 60),
+    SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
+    SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
+    SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+}
+
 # A data-app builder (gradio, streamlit, dash, panel, nicegui, reflex, voila).
 # These are a layer ABOVE web-framework: they wrap a web framework + a
 # component model + a kernel-like state loop to let data scientists ship
@@ -502,6 +597,10 @@ PROFILE_ASYNC_RUNTIME = "async-runtime"
 PROFILE_TASK_QUEUE = "task-queue"
 PROFILE_NOTEBOOK_RUNTIME = "notebook-runtime"
 PROFILE_DATA_APP = "data-app"
+PROFILE_WORKFLOW_ORCHESTRATOR = "workflow-orchestrator"
+PROFILE_DOC_BUILDER = "doc-builder"
+PROFILE_AGENTIC_FRAMEWORK = "agentic-framework"
+PROFILE_GUI_TOOLKIT = "gui-toolkit"
 DEFAULT_PROFILE = PROFILE_PLUGIN
 
 PROFILE_WEIGHTS: dict[str, dict[SurfaceKind, Weight]] = {
@@ -525,6 +624,10 @@ PROFILE_WEIGHTS: dict[str, dict[SurfaceKind, Weight]] = {
     PROFILE_TASK_QUEUE: TASK_QUEUE_WEIGHTS,
     PROFILE_NOTEBOOK_RUNTIME: NOTEBOOK_RUNTIME_WEIGHTS,
     PROFILE_DATA_APP: DATA_APP_WEIGHTS,
+    PROFILE_WORKFLOW_ORCHESTRATOR: WORKFLOW_ORCHESTRATOR_WEIGHTS,
+    PROFILE_DOC_BUILDER: DOC_BUILDER_WEIGHTS,
+    PROFILE_AGENTIC_FRAMEWORK: AGENTIC_FRAMEWORK_WEIGHTS,
+    PROFILE_GUI_TOOLKIT: GUI_TOOLKIT_WEIGHTS,
 }
 
 # Backwards-compat alias for any external caller.
@@ -651,6 +754,62 @@ TASK_QUEUE_NAMES: set[str] = {
 # ml-framework (the model code itself); these are the UI/serving layer
 # that lets a data scientist wrap a model behind a web UI without writing
 # routing code. Tight allowlist.
+# Workflow orchestrators -- DAG-shaped pipeline runners. Distinct from
+# task-queue (stateless job runners): orchestrators are stateful schedulers
+# with retry policies, lineage tracking, and a UI surface.
+WORKFLOW_ORCHESTRATOR_NAMES: set[str] = {
+    "airflow", "apache-airflow",
+    "prefect",
+    "dagster",
+    "luigi",
+    "kedro",
+    "snakemake",
+    "doit",
+}
+
+# Documentation builders -- markup-to-output renderers.
+DOC_BUILDER_NAMES: set[str] = {
+    "sphinx",
+    "mkdocs", "mkdocs-material",
+    "docutils", "myst-parser",
+    "pdoc", "pdoc3",
+    "pelican",
+    "nbsphinx",
+}
+
+# Agentic / LLM-orchestration frameworks. Chain-building libraries that
+# call LLM APIs with constructed prompts.
+AGENTIC_FRAMEWORK_NAMES: set[str] = {
+    "langchain", "langchain-core", "langchain-community",
+    "langchain-openai", "langchain-anthropic", "langchain-google-genai",
+    "langgraph", "langsmith",
+    "llama-index", "llama-index-core",
+    "llama-index-llms-openai", "llama-index-llms-anthropic",
+    "llama-index-embeddings-openai",
+    "dspy", "dspy-ai",
+    "autogen", "autogen-agentchat", "autogen-core",
+    "semantic-kernel",
+    "smolagents",
+    "crewai", "crewai-tools",
+    "guidance",
+    "haystack-ai", "farm-haystack",
+    "instructor",
+    "litellm",
+}
+
+# Native GUI toolkits.
+GUI_TOOLKIT_NAMES: set[str] = {
+    "kivy", "kivy-garden",
+    "pyqt5", "pyqt6",
+    "pyside2", "pyside6",
+    "wxpython",
+    "dearpygui",
+    "customtkinter", "ttkbootstrap",
+    "flet",
+    "toga",
+}
+
+
 DATA_APP_NAMES: set[str] = {
     "gradio", "gradio-client",
     "streamlit",
@@ -800,6 +959,15 @@ DATABASE_DRIVER_NAMES: set[str] = {
     # Message brokers (treated as DB-shaped clients here)
     "pika", "aio-pika", "kafka-python", "aiokafka", "confluent-kafka",
     "pulsar-client", "nats-py", "stomp-py",
+    # Vector stores -- same outbound + DSN shape as classical DB drivers,
+    # plus a network call to a search backend. faiss/annoy are pure
+    # in-process algorithms (not clients), excluded.
+    "chromadb",
+    "pinecone", "pinecone-client",
+    "weaviate-client",
+    "pymilvus",
+    "lancedb",
+    "qdrant-client",
 }
 
 
@@ -884,6 +1052,14 @@ def detect_profile_from_name(name: str, ecosystem: str) -> tuple[str, str] | Non
             return PROFILE_NOTEBOOK_RUNTIME, f"name-allowlist: {name}"
         if name in DATA_APP_NAMES:
             return PROFILE_DATA_APP, f"name-allowlist: {name}"
+        if name in WORKFLOW_ORCHESTRATOR_NAMES:
+            return PROFILE_WORKFLOW_ORCHESTRATOR, f"name-allowlist: {name}"
+        if name in DOC_BUILDER_NAMES:
+            return PROFILE_DOC_BUILDER, f"name-allowlist: {name}"
+        if name in AGENTIC_FRAMEWORK_NAMES:
+            return PROFILE_AGENTIC_FRAMEWORK, f"name-allowlist: {name}"
+        if name in GUI_TOOLKIT_NAMES:
+            return PROFILE_GUI_TOOLKIT, f"name-allowlist: {name}"
         return None
     if ecosystem == "npm":
         if name.startswith("@modelcontextprotocol/server-"):
