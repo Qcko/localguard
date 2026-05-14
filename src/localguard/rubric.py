@@ -70,6 +70,30 @@ CLI_FRAMEWORK_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
 }
 
+# An ML framework's purpose stretches data-science relaxations further:
+# training forks worker processes (subprocess), opens NCCL/Gloo sockets
+# for distributed training (listening_port), writes checkpoints + logs +
+# tensorboard runs (fs_write), downloads model weights and datasets from
+# HuggingFace / model hubs (outbound_network + outbound_dynamic +
+# hardcoded_host), and links CUDA / mmaps GPU shared memory at import.
+# Relax those six surfaces. Stay strict on obfuscation (same reasoning as
+# setuptools/numpy: legitimate eval in framework code would mask attacker
+# payloads in the same surface) and on the strict-by-design surfaces.
+ML_FRAMEWORK_WEIGHTS: dict[SurfaceKind, Weight] = {
+    SurfaceKind.OUTBOUND_NETWORK: Weight(2, 10),
+    SurfaceKind.OUTBOUND_DYNAMIC: Weight(4, 20),
+    SurfaceKind.LISTENING_PORT: Weight(5, 20),
+    SurfaceKind.SUBPROCESS: Weight(5, 20),
+    SurfaceKind.FS_WRITE: Weight(2, 10),
+    SurfaceKind.ENV_SECRET_READ: Weight(10, 20),
+    SurfaceKind.HARDCODED_HOST: Weight(1, 5),
+    SurfaceKind.TELEMETRY_ENDPOINT: Weight(10, 20),
+    SurfaceKind.OBFUSCATION: Weight(8, 60),
+    SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
+    SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
+    SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+}
+
 # A numerical/data-science library's purpose is parallel compute (joblib /
 # multiprocessing forks -> subprocess), saving arrays/dataframes/models/plots
 # (fs_write), and optionally downloading reference datasets (outbound_dynamic
@@ -166,6 +190,7 @@ PROFILE_NETWORK_LIBRARY = "network-library"
 PROFILE_WEB_SERVER = "web-server"
 PROFILE_BUILD_TOOL = "build-tool"
 PROFILE_DATA_SCIENCE = "data-science"
+PROFILE_ML_FRAMEWORK = "ml-framework"
 DEFAULT_PROFILE = PROFILE_PLUGIN
 
 PROFILE_WEIGHTS: dict[str, dict[SurfaceKind, Weight]] = {
@@ -176,6 +201,7 @@ PROFILE_WEIGHTS: dict[str, dict[SurfaceKind, Weight]] = {
     PROFILE_WEB_SERVER: WEB_SERVER_WEIGHTS,
     PROFILE_BUILD_TOOL: BUILD_TOOL_WEIGHTS,
     PROFILE_DATA_SCIENCE: DATA_SCIENCE_WEIGHTS,
+    PROFILE_ML_FRAMEWORK: ML_FRAMEWORK_WEIGHTS,
 }
 
 # Backwards-compat alias for any external caller.
@@ -239,6 +265,23 @@ WEB_SERVER_NAMES: set[str] = {
 # Excludes ML frameworks (torch, tensorflow, jax, transformers) which deserve
 # their own profile (GPU binding, CUDA linking, training process forks differ
 # from plain numerical compute). Canonical (PEP 503) names.
+# Well-known ML frameworks and the HuggingFace ecosystem. Wider relaxations
+# than data-science because training surfaces (distributed sockets, CUDA
+# linking, model-hub downloads) are core to the role. Canonical (PEP 503)
+# names.
+ML_FRAMEWORK_NAMES: set[str] = {
+    "torch", "torchvision", "torchaudio", "torchtext",
+    "tensorflow", "tensorflow-cpu", "tensorflow-gpu", "tf-keras", "keras",
+    "jax", "jaxlib", "flax", "optax",
+    "transformers", "tokenizers", "sentencepiece",
+    "diffusers", "datasets", "evaluate", "accelerate", "safetensors",
+    "peft", "trl", "optimum", "bitsandbytes",
+    "huggingface-hub",
+    "lightning", "pytorch-lightning",
+    "onnx", "onnxruntime", "onnxruntime-gpu",
+}
+
+
 DATA_SCIENCE_NAMES: set[str] = {
     "numpy", "scipy", "pandas", "polars", "pyarrow",
     "scikit-learn", "scikit-image",
@@ -281,6 +324,8 @@ def detect_profile_from_name(name: str, ecosystem: str) -> tuple[str, str] | Non
             return PROFILE_BUILD_TOOL, f"name-allowlist: {name}"
         if name in DATA_SCIENCE_NAMES:
             return PROFILE_DATA_SCIENCE, f"name-allowlist: {name}"
+        if name in ML_FRAMEWORK_NAMES:
+            return PROFILE_ML_FRAMEWORK, f"name-allowlist: {name}"
         return None
     if ecosystem == "npm":
         if name.startswith("@modelcontextprotocol/server-"):

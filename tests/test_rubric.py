@@ -165,6 +165,27 @@ def test_data_science_profile_stays_strict_on_outbound_and_obfuscation():
     assert plugin_obf.final_score == ds_obf.final_score
 
 
+def test_ml_framework_profile_relaxes_listening_port():
+    findings = _surf(SurfaceKind.LISTENING_PORT, 4)
+    plugin = rubric.score(findings, profile=rubric.PROFILE_PLUGIN)
+    ml = rubric.score(findings, profile=rubric.PROFILE_ML_FRAMEWORK)
+    assert ml.final_score > plugin.final_score
+
+
+def test_ml_framework_profile_relaxes_outbound_more_than_data_science():
+    findings = _surf(SurfaceKind.OUTBOUND_NETWORK, 6)
+    ds = rubric.score(findings, profile=rubric.PROFILE_DATA_SCIENCE)
+    ml = rubric.score(findings, profile=rubric.PROFILE_ML_FRAMEWORK)
+    assert ml.final_score > ds.final_score
+
+
+def test_ml_framework_profile_stays_strict_on_obfuscation():
+    findings = _surf(SurfaceKind.OBFUSCATION, 10)
+    plugin = rubric.score(findings, profile=rubric.PROFILE_PLUGIN)
+    ml = rubric.score(findings, profile=rubric.PROFILE_ML_FRAMEWORK)
+    assert plugin.final_score == ml.final_score
+
+
 def test_unknown_profile_falls_back_to_plugin_weights():
     findings = _surf(SurfaceKind.LISTENING_PORT, 5)
     bogus = rubric.score(findings, profile="not-a-real-profile")

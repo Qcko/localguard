@@ -153,6 +153,24 @@ def test_numpy_pandas_etc_detect_as_data_science():
     )
 
 
+def test_torch_transformers_etc_detect_as_ml_framework():
+    assert rubric.detect_profile_from_name("torch", "pypi") == (
+        rubric.PROFILE_ML_FRAMEWORK, "name-allowlist: torch",
+    )
+    assert rubric.detect_profile_from_name("tensorflow", "pypi") == (
+        rubric.PROFILE_ML_FRAMEWORK, "name-allowlist: tensorflow",
+    )
+    assert rubric.detect_profile_from_name("transformers", "pypi") == (
+        rubric.PROFILE_ML_FRAMEWORK, "name-allowlist: transformers",
+    )
+    assert rubric.detect_profile_from_name("jax", "pypi") == (
+        rubric.PROFILE_ML_FRAMEWORK, "name-allowlist: jax",
+    )
+    assert rubric.detect_profile_from_name("huggingface-hub", "pypi") == (
+        rubric.PROFILE_ML_FRAMEWORK, "name-allowlist: huggingface-hub",
+    )
+
+
 def test_normal_libraries_are_not_detected():
     assert rubric.detect_profile_from_name("lodash", "npm") is None
     assert rubric.detect_profile_from_name("mcp", "pypi") is None  # the SDK itself: library, not server
