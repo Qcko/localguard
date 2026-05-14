@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import audit, cache as cache_mod, deps as deps_mod, diff, doctor as doctor_mod, egress as egress_mod, hook, init_hook as init_hook_mod, inspect as inspect_mod, library_refresh as library_refresh_mod, manifest, preflight as preflight_mod
+from . import audit, cache as cache_mod, deps as deps_mod, diff, doctor as doctor_mod, egress as egress_mod, fetch, hook, init_hook as init_hook_mod, inspect as inspect_mod, library_refresh as library_refresh_mod, manifest, preflight as preflight_mod
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -419,7 +419,7 @@ def _classify_tree_for_accept(node):
     for n in _walk(node):
         if n.cycle or n.truncated:
             continue
-        key = (n.ecosystem, n.name.lower(), n.version or "")
+        key = (n.ecosystem, fetch.canonical_name(n.name, n.ecosystem), n.version or "")
         if key in seen:
             continue
         seen.add(key)

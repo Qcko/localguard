@@ -54,7 +54,7 @@ def audit_tree(raw_spec: str, ecosystem: str | None = None, *, max_depth: int = 
     spec = _resolve_spec_with_version(raw_spec, ecosystem, specifier=specifier)
     if spec is None:
         return TreeNode(name=raw_spec, version=None, ecosystem=ecosystem or "unknown", error="could not resolve version")
-    key = (spec.ecosystem, spec.name.lower(), spec.version or "")
+    key = (spec.ecosystem, fetch.canonical_name(spec.name, spec.ecosystem), spec.version or "")
     if key in visited:
         return TreeNode(name=spec.name, version=spec.version, ecosystem=spec.ecosystem, cycle=True)
     visited.add(key)
@@ -235,7 +235,8 @@ def parse_requirement(req_str: str) -> DepRequirement | None:
     match = REQUIREMENT_NAME_RE.match(req)
     if not match:
         return None
-    name = match.group(1).lower()
+    raw_name = match.group(1)
+    name = fetch.canonical_name(raw_name, "npm" if raw_name.startswith("@") else "pypi")
     rest = req[match.end():].strip()
     if rest.startswith("["):
         close = rest.find("]")

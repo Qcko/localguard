@@ -111,7 +111,19 @@ def _resolve_pypi_match(name: str, specifier: str) -> str | None:
 def parse_spec(raw: str, ecosystem_override: str | None = None) -> PackageSpec:
     ecosystem = ecosystem_override or _detect_ecosystem(raw)
     name, version = _split_name_and_version(raw, ecosystem)
-    return PackageSpec(name=name, version=version, ecosystem=ecosystem)
+    return PackageSpec(name=canonical_name(name, ecosystem), version=version, ecosystem=ecosystem)
+
+
+_PEP503_RE = re.compile(r"[-_.]+")
+
+
+def canonical_name(name: str, ecosystem: str) -> str:
+    """PEP 503 normalization for pypi (lowercase + collapse [-_.] to '-').
+    npm names are case-sensitive and may legitimately contain '_', so only lowercase scope/name segments.
+    """
+    if ecosystem == "pypi":
+        return _PEP503_RE.sub("-", name).lower()
+    return name.lower() if not name.startswith("@") else name
 
 
 def _detect_ecosystem(raw: str) -> str:

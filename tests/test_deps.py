@@ -9,6 +9,27 @@ from localguard import deps, fetch, manifest, preflight
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
+def test_canonical_name_pep503():
+    assert fetch.canonical_name("typing_extensions", "pypi") == "typing-extensions"
+    assert fetch.canonical_name("typing-extensions", "pypi") == "typing-extensions"
+    assert fetch.canonical_name("Typing.Extensions", "pypi") == "typing-extensions"
+    assert fetch.canonical_name("CHARSET__normalizer", "pypi") == "charset-normalizer"
+
+
+def test_canonical_name_preserves_npm():
+    assert fetch.canonical_name("@scope/foo_bar", "npm") == "@scope/foo_bar"
+    assert fetch.canonical_name("Lodash", "npm") == "lodash"
+
+
+def test_parse_spec_canonicalizes_pypi_name():
+    assert fetch.parse_spec("typing_extensions==4.15.0").name == "typing-extensions"
+    assert fetch.parse_spec("typing-extensions==4.15.0").name == "typing-extensions"
+
+
+def test_parse_requirement_canonicalizes_pypi():
+    assert deps.parse_requirement("typing_extensions>=4.0").name == "typing-extensions"
+
+
 def test_python_deps_from_pyproject(tmp_path: Path):
     (tmp_path / "pyproject.toml").write_text(textwrap.dedent("""
         [project]
@@ -64,7 +85,7 @@ def test_python_deps_from_egg_info_requires_txt(tmp_path: Path):
 
     result = deps.extract_deps(tmp_path, "pypi")
 
-    assert [d.name for d in result] == ["charset_normalizer", "idna", "urllib3", "certifi"]
+    assert [d.name for d in result] == ["charset-normalizer", "idna", "urllib3", "certifi"]
     assert next(d for d in result if d.name == "certifi").specifier == ">=2017.4.17"
 
 
