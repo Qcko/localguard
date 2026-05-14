@@ -380,6 +380,7 @@ def _add_accept(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--yes", action="store_true", help="Skip the confirmation prompt.")
     p.add_argument("--with-deps", action="store_true", help="Recursively audit the dep closure and baseline every acceptable node.")
     p.add_argument("--max-depth", type=int, default=deps_mod.DEFAULT_MAX_DEPTH)
+    p.add_argument("--pin-surfaces", action="store_true", help="Record the current per-surface finding counts as the accepted baseline. Future installs trigger drift only when a surface's count EXCEEDS the pinned value -- useful for packages like transformers where the strict-surface count (env_secret_read, etc.) is large but the user explicitly accepts that count as the role's footprint.")
     _add_profile_arg(p)
     p.set_defaults(handler=_handle_accept)
 
@@ -402,9 +403,22 @@ def _handle_accept(args: argparse.Namespace) -> int:
             sys.stdout.write("aborted; no library entry written\n")
             return 1
     report_dict["status"] = "accepted"
+    if getattr(args, "pin_surfaces", False):
+        report_dict["expected_surface_counts"] = _surface_counts_from_report(report_dict)
+        sys.stdout.write(f"pinned surfaces: {report_dict['expected_surface_counts']}\n")
     library_path = manifest.write_library_entry(report_dict)
     sys.stdout.write(f"baselined: {library_path}\n")
     return 0
+
+
+def _surface_counts_from_report(report_dict: dict) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for finding in report_dict.get("findings") or []:
+        kind = finding.get("kind")
+        if not kind:
+            continue
+        counts[kind] = counts.get(kind, 0) + 1
+    return counts
 
 
 def _handle_accept_with_deps(args: argparse.Namespace) -> int:

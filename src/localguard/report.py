@@ -77,6 +77,15 @@ class AuditReport:
     profile: str = "plugin"
     profile_reason: str | None = None
     status: str | None = None
+    # Per-package surface-count baseline. When set on an accepted library
+    # entry, the drift path (preflight._diff_verdict) absorbs subsequent
+    # findings on each surface UP TO the pinned count -- only the excess
+    # contributes to drift. Lets the user explicitly accept the count of
+    # legitimate-but-strict-surface findings in packages like transformers
+    # (8 HF token env reads) without flagging every refactor that changes
+    # the specific identifier names. Looser than per-signature diff;
+    # opt-in via `localguard accept --pin-surfaces`.
+    expected_surface_counts: dict[str, int] | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -89,6 +98,7 @@ class AuditReport:
             "profile": self.profile,
             "profile_reason": self.profile_reason,
             "status": self.status,
+            "expected_surface_counts": self.expected_surface_counts,
             "score": asdict(self.score) if self.score else None,
             "findings": [_finding_to_dict(f) for f in self.findings],
         }

@@ -153,7 +153,7 @@ def _diff_verdict(report_dict, baseline, spec, score, min_score) -> Verdict:
     reasons: list[str] = []
     if score < min_score:
         reasons.append(f"score {score} below threshold {min_score}")
-    novel_high_risk = _novel_high_risk(drift)
+    novel_high_risk = _novel_high_risk(drift, baseline, report_dict)
     if novel_high_risk:
         reasons.append("novel high-risk surfaces vs. baseline: " + ", ".join(sorted(novel_high_risk)))
     if drift.get("profile_changed"):
@@ -162,6 +162,35 @@ def _diff_verdict(report_dict, baseline, spec, score, min_score) -> Verdict:
     return Verdict(status=status, spec_name=spec.name, spec_version=spec.version, ecosystem=spec.ecosystem, score=score, reasons=reasons, drift=drift)
 
 
-def _novel_high_risk(drift: dict[str, Any]) -> set[str]:
+def _novel_high_risk(drift: dict[str, Any], baseline: dict[str, Any] | None = None, candidate: dict[str, Any] | None = None) -> set[str]:
+    """Surface kinds where the candidate has novel high-risk findings.
+
+    Default: per-signature -- any new finding signature (kind+identifier)
+    not present in the baseline counts as novel.
+
+    Pinned override: if the baseline carries `expected_surface_counts`, a
+    surface is novel only when the candidate's TOTAL count on that surface
+    EXCEEDS the pinned count. This is the per-package surface-count
+    relaxation that lets a user accept "transformers reads 8 env vars; up
+    to 8 is fine, more triggers review" without flagging every refactor
+    that changes which specific env-var names are read.
+    """
     new = drift.get("new_findings") or {}
-    return {kind for kind in new.keys() if kind in HIGH_RISK_KINDS and new[kind]}
+    novel = {kind for kind in new.keys() if kind in HIGH_RISK_KINDS and new[kind]}
+    if not novel or baseline is None or candidate is None:
+        return novel
+    pinned = baseline.get("expected_surface_counts") or {}
+    if not pinned:
+        return novel
+    candidate_counts = _surface_counts_from_findings(candidate)
+    return {kind for kind in novel if candidate_counts.get(kind, 0) > pinned.get(kind, 0)}
+
+
+def _surface_counts_from_findings(report: dict[str, Any]) -> dict[str, int]:
+    counts: dict[str, int] = {}
+    for finding in report.get("findings", []) or []:
+        kind = finding.get("kind")
+        if not kind:
+            continue
+        counts[kind] = counts.get(kind, 0) + 1
+    return counts
