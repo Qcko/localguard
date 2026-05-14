@@ -62,3 +62,19 @@ def test_i18n_directories_classified_as_non_runtime():
     assert walker.find_context("messages/fr.po") == "i18n"
     assert walker.find_context("lang/de.ts") == "i18n"
     assert walker.find_context("src/runtime.ts") == "runtime"
+
+
+def test_vendored_directories_classified_as_non_runtime():
+    assert walker.find_context("setuptools/_vendor/jaraco/functools/__init__.py") == "vendored"
+    assert walker.find_context("setuptools/_distutils/ccompiler.py") == "vendored"
+    assert walker.find_context("pip/_vendor/requests/api.py") == "vendored"
+    assert walker.find_context("pkg/vendor/lib/x.py") == "vendored"
+    assert walker.find_context("pkg/third_party/lib.py") == "vendored"
+    assert walker.find_context("pkg/third-party/lib.py") == "vendored"
+    assert walker.find_context("pkg/bundled/x.py") == "vendored"
+    # Hyphen-suffixed forms (numpy's vendored-meson, etc.)
+    assert walker.find_context("numpy/vendored-meson/meson/mesonbuild/mesonmain.py") == "vendored"
+    assert walker.find_context("pkg/_vendor-jaraco/x.py") == "vendored"
+    # Not vendored -- internals, not bundled third-party
+    assert walker.find_context("pkg/_internal/x.py") == "runtime"
+    assert walker.find_context("pkg/runtime.py") == "runtime"

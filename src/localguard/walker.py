@@ -10,6 +10,17 @@ SKIP_DIRS = {".git", ".venv", "venv", "__pycache__", "node_modules", "dist", "bu
 TEST_DIR_NAMES = {"tests", "test", "testing", "__tests__", "spec", "specs"}
 DOC_DIR_NAMES = {"docs", "doc", "examples", "example", "samples"}
 I18N_DIR_NAMES = {"locales", "locale", "i18n", "lang", "langs", "translations", "messages"}
+# Bundled third-party code that originally lived as its own package. Findings
+# inside these directories logically belong to the vendored package (audit it
+# under its own name if in doubt), not to the current package being scored.
+# Conventions covered: setuptools/pip's `_vendor` and `_distutils`, generic
+# `vendor`/`vendored`/`bundled`, the `third_party` variants common in larger
+# projects. Tight set on purpose -- this is a context, not an "ignore" knob.
+VENDORED_DIR_NAMES = {
+    "_vendor", "_vendored", "_distutils",
+    "vendor", "vendored", "bundled",
+    "third_party", "thirdparty", "third-party",
+}
 PYTHON_SUFFIXES = {".py", ".pyi"}
 JS_SUFFIXES = {".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx"}
 TEXT_SUFFIXES = PYTHON_SUFFIXES | JS_SUFFIXES | {".md", ".txt", ".json", ".toml", ".yaml", ".yml", ".cfg", ".ini"}
@@ -80,11 +91,22 @@ def find_context(rel: str) -> str:
         return "docs"
     if any(p.lower() in I18N_DIR_NAMES for p in parts[:-1]):
         return "i18n"
+    if any(_is_vendored_part(p) for p in parts[:-1]):
+        return "vendored"
     if _is_doc_or_meta_file(name) and len(parts) == 1:
         return "docs"
     if name in {"setup.py", "setup.cfg", "pyproject.toml", "package.json", "manifest.in"} and len(parts) == 1:
         return "setup"
     return "runtime"
+
+
+def _is_vendored_part(part: str) -> bool:
+    p = part.lower()
+    if p in VENDORED_DIR_NAMES:
+        return True
+    # Hyphen-suffixed forms commonly used by upstreams to keep the bundling
+    # explicit: numpy's `vendored-meson`, hypothetical `_vendor-jaraco`, etc.
+    return p.startswith(("vendored-", "_vendor-", "_vendored-", "bundled-"))
 
 
 def _is_doc_or_meta_file(name: str) -> bool:
