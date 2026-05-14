@@ -105,6 +105,55 @@ def iter_library(library_root: Path | None = None, ecosystem: str | None = None)
     return rows
 
 
+def library_stats(library_root: Path | None = None) -> dict:
+    library_root = library_root or DEFAULT_LIBRARY_ROOT
+    rows = iter_library(library_root=library_root)
+    by_eco: dict[str, int] = {}
+    bands = {"high": 0, "mid": 0, "low": 0, "unscored": 0}
+    scores: list[int] = []
+    for r in rows:
+        by_eco[r["ecosystem"]] = by_eco.get(r["ecosystem"], 0) + 1
+        s = r.get("score")
+        if s is None:
+            bands["unscored"] += 1
+        else:
+            scores.append(s)
+            if s >= 90:
+                bands["high"] += 1
+            elif s >= 50:
+                bands["mid"] += 1
+            else:
+                bands["low"] += 1
+    sorted_by_audited = sorted([r for r in rows if r.get("audited_at")], key=lambda r: r["audited_at"])
+    oldest = sorted_by_audited[0] if sorted_by_audited else None
+    newest = sorted_by_audited[-1] if sorted_by_audited else None
+    size_bytes = _library_size(library_root)
+    mean = sum(scores) / len(scores) if scores else None
+    median = sorted(scores)[len(scores) // 2] if scores else None
+    return {
+        "total": len(rows),
+        "size_bytes": size_bytes,
+        "by_ecosystem": dict(sorted(by_eco.items())),
+        "score_bands": bands,
+        "mean_score": mean,
+        "median_score": median,
+        "oldest": oldest,
+        "newest": newest,
+    }
+
+
+def _library_size(library_root: Path) -> int:
+    if not library_root.exists():
+        return 0
+    total = 0
+    for path in library_root.rglob("*.json"):
+        try:
+            total += path.stat().st_size
+        except OSError:
+            continue
+    return total
+
+
 def find_library_entry(name: str, ecosystem: str, version: str | None = None, library_root: Path | None = None) -> dict | None:
     library_root = library_root or DEFAULT_LIBRARY_ROOT
     name_root = library_root / ecosystem / name

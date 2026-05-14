@@ -117,6 +117,10 @@ def _add_library(sub: argparse._SubParsersAction) -> None:
     p_forget.add_argument("--yes", action="store_true")
     p_forget.set_defaults(handler=_handle_library_forget)
 
+    p_stats = lib_sub.add_parser("stats", help="Health glance: per-ecosystem counts, score distribution, oldest/newest entry.")
+    p_stats.add_argument("--json", action="store_true")
+    p_stats.set_defaults(handler=_handle_library_stats)
+
     p_refresh = lib_sub.add_parser("refresh", help="Re-audit every baselined package at its stored version and rewrite the report (use after detector or rubric changes).")
     p_refresh.add_argument("--ecosystem", choices=["pypi", "npm"], default=None)
     p_refresh.add_argument("--name", default=None, help="Substring filter on package name.")
@@ -137,6 +141,32 @@ def _handle_library_list(args: argparse.Namespace) -> int:
     for r in rows:
         sys.stdout.write(f"{r['name']:<40} {str(r.get('version') or '?'):<16} {r['ecosystem']:<6} {str(r.get('score') or '?'):<6} {r.get('audited_at') or '?'}\n")
     sys.stdout.write(f"\n{len(rows)} entries\n")
+    return 0
+
+
+def _handle_library_stats(args: argparse.Namespace) -> int:
+    stats = manifest.library_stats()
+    if args.json:
+        _emit_json(stats, pretty=True)
+        return 0
+    if not stats["total"]:
+        sys.stdout.write("(library is empty)\n")
+        return 0
+    sys.stdout.write(f"total entries: {stats['total']}\n")
+    sys.stdout.write(f"size on disk:  {stats['size_bytes']/1024:.1f} KiB\n")
+    sys.stdout.write("\nby ecosystem:\n")
+    for eco, n in stats["by_ecosystem"].items():
+        sys.stdout.write(f"  {eco:<6} {n}\n")
+    sys.stdout.write("\nscore distribution:\n")
+    sys.stdout.write(f"  >= 90 (auto-baselined):     {stats['score_bands']['high']}\n")
+    sys.stdout.write(f"  50-89 (manually accepted):  {stats['score_bands']['mid']}\n")
+    sys.stdout.write(f"  <  50 (override required):  {stats['score_bands']['low']}\n")
+    sys.stdout.write(f"  unscored:                   {stats['score_bands']['unscored']}\n")
+    if stats["mean_score"] is not None:
+        sys.stdout.write(f"  mean: {stats['mean_score']:.1f}   median: {stats['median_score']}\n")
+    if stats["oldest"]:
+        sys.stdout.write(f"\noldest: {stats['oldest']['name']}=={stats['oldest']['version']} ({stats['oldest']['audited_at']})\n")
+        sys.stdout.write(f"newest: {stats['newest']['name']}=={stats['newest']['version']} ({stats['newest']['audited_at']})\n")
     return 0
 
 
