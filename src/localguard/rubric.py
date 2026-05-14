@@ -336,6 +336,19 @@ DEFAULT_WEIGHTS = PLUGIN_WEIGHTS
 
 STARTING_SCORE = 100
 
+# Split the obfuscation deduction by finding shape (see python_ast.py):
+# - "encoded" findings (exec/eval/compile of base64.b64decode/zlib.decompress/
+#   marshal.loads/etc. -- the canonical supply-chain attack pattern) keep the
+#   profile's full per_finding + cap.
+# - "dynamic" findings (plain `exec(<var>)` -- the legitimate code-gen pattern
+#   in numpy, setuptools, sqlalchemy, jinja2, pytest assertion rewriting) get
+#   weighted at these fractions.
+# Numbers chosen so that a library with 20+ legitimate dynamic findings stops
+# pinning to the full obfuscation cap, while a real attacker payload with
+# even a single encoded finding still contributes full severity.
+OBFUSCATION_DYNAMIC_PER_FINDING_RATIO = 0.4
+OBFUSCATION_DYNAMIC_CAP_RATIO = 0.4
+
 
 def weights_for(profile: str) -> dict[SurfaceKind, Weight]:
     return PROFILE_WEIGHTS.get(profile, PLUGIN_WEIGHTS)
@@ -614,25 +627,27 @@ def detect_profile_from_metadata(audit_root, ecosystem: str) -> tuple[str, str] 
 def score(findings: list[Finding], weights: dict[SurfaceKind, Weight] | None = None, *, profile: str = DEFAULT_PROFILE) -> ScoreBreakdown:
     weights = weights or weights_for(profile)
     runtime = [f for f in findings if walker.find_context(f.file) == "runtime"]
-    counts = _count_by_kind(runtime)
-    deductions = _build_deductions(counts, weights)
+    deductions = _build_deductions(runtime, weights)
     total_deducted = sum(d["deducted"] for d in deductions)
     final = max(0, STARTING_SCORE - total_deducted)
     return ScoreBreakdown(final_score=final, deductions=deductions)
 
 
-def _count_by_kind(findings: list[Finding]) -> dict[SurfaceKind, int]:
+def _build_deductions(findings: list[Finding], weights: dict[SurfaceKind, Weight]) -> list[dict]:
     counts: dict[SurfaceKind, int] = defaultdict(int)
-    for finding in findings:
-        counts[finding.kind] += 1
-    return counts
-
-
-def _build_deductions(counts: dict[SurfaceKind, int], weights: dict[SurfaceKind, Weight]) -> list[dict]:
+    obf_by_shape: dict[str, int] = defaultdict(int)
+    for f in findings:
+        counts[f.kind] += 1
+        if f.kind == SurfaceKind.OBFUSCATION:
+            shape = f.extra.get("shape", "dynamic") if f.extra else "dynamic"
+            obf_by_shape[shape] += 1
     deductions = []
     for kind, count in counts.items():
         weight = weights.get(kind)
         if not weight or weight.cap == 0:
+            continue
+        if kind == SurfaceKind.OBFUSCATION:
+            deductions.append(_obfuscation_deduction(weight, obf_by_shape))
             continue
         raw = weight.per_finding * count
         deducted = min(raw, weight.cap)
@@ -644,3 +659,24 @@ def _build_deductions(counts: dict[SurfaceKind, int], weights: dict[SurfaceKind,
             "deducted": deducted,
         })
     return deductions
+
+
+def _obfuscation_deduction(weight: Weight, by_shape: dict[str, int]) -> dict:
+    enc = by_shape.get("encoded", 0)
+    dyn = by_shape.get("dynamic", 0)
+    dyn_per = max(1, round(weight.per_finding * OBFUSCATION_DYNAMIC_PER_FINDING_RATIO))
+    dyn_cap = round(weight.cap * OBFUSCATION_DYNAMIC_CAP_RATIO)
+    enc_deducted = min(weight.per_finding * enc, weight.cap)
+    dyn_deducted = min(dyn_per * dyn, dyn_cap)
+    total = min(enc_deducted + dyn_deducted, weight.cap)
+    return {
+        "kind": SurfaceKind.OBFUSCATION.value,
+        "count": enc + dyn,
+        "encoded_count": enc,
+        "dynamic_count": dyn,
+        "per_finding": weight.per_finding,
+        "cap": weight.cap,
+        "dynamic_per_finding": dyn_per,
+        "dynamic_cap": dyn_cap,
+        "deducted": total,
+    }

@@ -4,31 +4,42 @@ from localguard import rubric
 from localguard.report import Finding, SurfaceKind
 
 
-def _obf(n: int) -> list[Finding]:
+def _obf(n: int, shape: str = "dynamic") -> list[Finding]:
+    """Build n obfuscation findings of the given shape (`dynamic` or `encoded`)."""
     return [
-        Finding(kind=SurfaceKind.OBFUSCATION, file="pkg/runtime.py", line=i + 1, detail="eval(...)", confidence="literal", extra={})
+        Finding(kind=SurfaceKind.OBFUSCATION, file="pkg/runtime.py", line=i + 1, detail="eval(...)", confidence="literal", extra={"builtin": "eval", "shape": shape})
         for i in range(n)
     ]
 
 
-def test_obfuscation_one_finding_stays_auto_baselineable():
-    breakdown = rubric.score(_obf(1))
-    assert breakdown.final_score == 92
+def test_obfuscation_one_dynamic_finding_barely_dings():
+    breakdown = rubric.score(_obf(1, "dynamic"))
+    # dynamic per_finding under plugin = round(8 * 0.4) = 3
+    assert breakdown.final_score == 97
 
 
-def test_obfuscation_two_findings_drop_below_auto_threshold():
-    breakdown = rubric.score(_obf(2))
-    assert 80 <= breakdown.final_score < 90
+def test_obfuscation_many_dynamic_findings_cap_at_lower_threshold():
+    # Plain dynamic compile/exec (legitimate code-gen) caps at the dynamic
+    # cap = round(60 * 0.4) = 24, never reaching the full 60.
+    breakdown = rubric.score(_obf(20, "dynamic"))
+    assert breakdown.final_score == 100 - 24
 
 
-def test_obfuscation_five_findings_still_acceptable_band():
-    breakdown = rubric.score(_obf(5))
-    assert 50 <= breakdown.final_score < 90
+def test_obfuscation_one_encoded_finding_lands_full_weight():
+    breakdown = rubric.score(_obf(1, "encoded"))
+    assert breakdown.final_score == 100 - 8  # full plugin per_finding
 
 
-def test_obfuscation_many_findings_hit_low_score():
-    breakdown = rubric.score(_obf(20))
-    assert breakdown.final_score < 50
+def test_obfuscation_many_encoded_findings_hit_full_cap():
+    breakdown = rubric.score(_obf(20, "encoded"))
+    assert breakdown.final_score == 100 - 60  # full plugin cap
+
+
+def test_obfuscation_mixed_encoded_and_dynamic_cant_exceed_total_cap():
+    findings = _obf(10, "encoded") + _obf(20, "dynamic")
+    breakdown = rubric.score(findings)
+    # encoded: min(8*10, 60) = 60; dynamic: min(3*20, 24) = 24; total min(60+24, 60) = 60
+    assert breakdown.final_score == 100 - 60
 
 
 def _surf(kind: SurfaceKind, n: int) -> list[Finding]:
@@ -209,7 +220,10 @@ def test_database_driver_profile_stays_strict_on_subprocess():
 
 
 def test_template_engine_profile_lowers_obfuscation_cap():
-    findings = _surf(SurfaceKind.OBFUSCATION, 20)
+    # Use encoded findings to hit the full cap (dynamic findings cap at
+    # the lower dynamic-ratio, which is the same shape as the cap is
+    # what we're testing here).
+    findings = _obf(20, "encoded")
     plugin = rubric.score(findings, profile=rubric.PROFILE_PLUGIN)
     tpl = rubric.score(findings, profile=rubric.PROFILE_TEMPLATE_ENGINE)
     assert plugin.final_score == 100 - 60  # plugin cap

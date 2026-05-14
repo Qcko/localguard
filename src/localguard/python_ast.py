@@ -43,6 +43,22 @@ FS_WRITE_METHODS = {"write_text", "write_bytes"}
 FS_COPY_FQNS = {"shutil.copy", "shutil.copy2", "shutil.copyfile", "shutil.copytree", "shutil.move"}
 
 OBFUSCATION_FQNS = {"builtins.exec", "builtins.eval", "builtins.compile"}
+# Functions whose return value, when fed straight into exec/eval/compile, is
+# the hallmark of supply-chain attack code: `exec(base64.b64decode("..."))`,
+# `eval(zlib.decompress(payload))`, `exec(__import__('marshal').loads(...))`,
+# etc. We classify findings with one of these as the immediate arg as
+# `shape: encoded` and weight them at full severity. Plain `exec(<var>)`
+# without a decode/decompress wrapper gets `shape: dynamic` and weighs less:
+# legitimate code-gen in numpy/setuptools/sqlalchemy/jinja2 looks like that.
+ENCODED_OBFUSCATION_FQNS = {
+    "base64.b64decode", "base64.b85decode", "base64.b32decode",
+    "base64.b16decode", "base64.urlsafe_b64decode", "base64.decodebytes",
+    "binascii.unhexlify", "binascii.a2b_base64", "binascii.a2b_qp",
+    "zlib.decompress", "gzip.decompress",
+    "lzma.decompress", "bz2.decompress",
+    "codecs.decode",
+    "marshal.loads", "pickle.loads", "dill.loads",
+}
 
 SECRET_NAME_PATTERN = re.compile(r"(API[_-]?KEY|TOKEN|SECRET|PASSWORD|PASSWD|PRIVATE[_-]?KEY|CREDENTIAL)", re.IGNORECASE)
 SENSITIVE_VAR_HINT = re.compile(r"(token|secret|password|api[_-]?key|credential|cookie|session)", re.IGNORECASE)
@@ -134,7 +150,8 @@ class _PythonVisitor(ast.NodeVisitor):
     def _check_obfuscation(self, node: ast.Call, fqn: str) -> None:
         if fqn in OBFUSCATION_FQNS and node.args and not _is_string_literal(node.args[0]):
             bare = fqn.rsplit(".", 1)[-1]
-            self._add(SurfaceKind.OBFUSCATION, node, f"{bare}(<dynamic>)", extra={"builtin": bare})
+            shape = "encoded" if _is_encoded_chain(node.args[0], self.aliases) else "dynamic"
+            self._add(SurfaceKind.OBFUSCATION, node, f"{bare}(<{shape}>)", extra={"builtin": bare, "shape": shape})
 
     def _check_env_secret(self, node: ast.Call, fqn: str) -> None:
         is_env_getter = fqn in {"os.getenv", "os.environ.get"}
@@ -211,6 +228,29 @@ def _const_str(node: ast.AST | None) -> str | None:
     if isinstance(node, ast.Constant) and isinstance(node.value, str):
         return node.value
     return None
+
+
+def _is_encoded_chain(arg: ast.AST, aliases: dict[str, str]) -> bool:
+    """The argument to exec/eval/compile is a decode/decompress chain.
+
+    Recognizes `base64.b64decode(...)`, `zlib.decompress(...)`,
+    `marshal.loads(...)`, any `.decode()` method call, and bytewise
+    concatenation of any of the above (the `b'...' + b'...'` obfuscation).
+    Recurses into wrapped calls so `exec(zlib.decompress(b64decode(x)))`
+    is still classified encoded.
+    """
+    if isinstance(arg, ast.Call):
+        callee = _resolve_call_fqn(arg.func, aliases)
+        if callee in ENCODED_OBFUSCATION_FQNS:
+            return True
+        if _trailing_attr(arg.func) == "decode":
+            return True
+        for sub in arg.args:
+            if _is_encoded_chain(sub, aliases):
+                return True
+    if isinstance(arg, ast.BinOp):
+        return _is_encoded_chain(arg.left, aliases) or _is_encoded_chain(arg.right, aliases)
+    return False
 
 
 def _is_string_literal(node: ast.AST) -> bool:
