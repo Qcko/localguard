@@ -385,6 +385,61 @@ def test_web_framework_profile_stays_strict_on_env_secret_and_obfuscation():
     assert plugin_env.final_score == wf_env.final_score
 
 
+def test_async_runtime_profile_relaxes_listening_port_and_subprocess():
+    findings = _surf(SurfaceKind.LISTENING_PORT, 3) + _surf(SurfaceKind.SUBPROCESS, 5)
+    plugin = rubric.score(findings, profile=rubric.PROFILE_PLUGIN)
+    ar = rubric.score(findings, profile=rubric.PROFILE_ASYNC_RUNTIME)
+    assert ar.final_score > plugin.final_score
+
+
+def test_async_runtime_profile_stays_strict_on_env_secret_and_obfuscation():
+    findings = _surf(SurfaceKind.ENV_SECRET_READ, 3)
+    plugin = rubric.score(findings, profile=rubric.PROFILE_PLUGIN)
+    ar = rubric.score(findings, profile=rubric.PROFILE_ASYNC_RUNTIME)
+    assert plugin.final_score == ar.final_score
+
+
+def test_task_queue_profile_relaxes_subprocess_and_outbound():
+    sp = _surf(SurfaceKind.SUBPROCESS, 5)
+    on = _surf(SurfaceKind.OUTBOUND_NETWORK, 10)
+    plugin_sp = rubric.score(sp, profile=rubric.PROFILE_PLUGIN)
+    tq_sp = rubric.score(sp, profile=rubric.PROFILE_TASK_QUEUE)
+    plugin_on = rubric.score(on, profile=rubric.PROFILE_PLUGIN)
+    tq_on = rubric.score(on, profile=rubric.PROFILE_TASK_QUEUE)
+    assert tq_sp.final_score > plugin_sp.final_score
+    assert tq_on.final_score > plugin_on.final_score
+
+
+def test_notebook_runtime_profile_lowers_obfuscation_cap():
+    findings = _obf(20, "encoded")
+    plugin = rubric.score(findings, profile=rubric.PROFILE_PLUGIN)
+    nb = rubric.score(findings, profile=rubric.PROFILE_NOTEBOOK_RUNTIME)
+    assert plugin.final_score == 100 - 60  # plugin cap
+    assert nb.final_score == 100 - 30      # notebook-runtime cap
+
+
+def test_notebook_runtime_profile_relaxes_subprocess_and_fs_write():
+    sp = _surf(SurfaceKind.SUBPROCESS, 5)
+    fw = _surf(SurfaceKind.FS_WRITE, 6)
+    plugin_sp = rubric.score(sp, profile=rubric.PROFILE_PLUGIN)
+    nb_sp = rubric.score(sp, profile=rubric.PROFILE_NOTEBOOK_RUNTIME)
+    plugin_fw = rubric.score(fw, profile=rubric.PROFILE_PLUGIN)
+    nb_fw = rubric.score(fw, profile=rubric.PROFILE_NOTEBOOK_RUNTIME)
+    assert nb_sp.final_score > plugin_sp.final_score
+    assert nb_fw.final_score > plugin_fw.final_score
+
+
+def test_notebook_runtime_profile_stays_strict_on_env_secret_and_data_exfil():
+    env = _surf(SurfaceKind.ENV_SECRET_READ, 3)
+    exfil = _surf(SurfaceKind.DATA_EXFIL_HINT, 2)
+    plugin_env = rubric.score(env, profile=rubric.PROFILE_PLUGIN)
+    nb_env = rubric.score(env, profile=rubric.PROFILE_NOTEBOOK_RUNTIME)
+    plugin_exfil = rubric.score(exfil, profile=rubric.PROFILE_PLUGIN)
+    nb_exfil = rubric.score(exfil, profile=rubric.PROFILE_NOTEBOOK_RUNTIME)
+    assert plugin_env.final_score == nb_env.final_score
+    assert plugin_exfil.final_score == nb_exfil.final_score
+
+
 def test_unknown_profile_falls_back_to_plugin_weights():
     findings = _surf(SurfaceKind.LISTENING_PORT, 5)
     bogus = rubric.score(findings, profile="not-a-real-profile")

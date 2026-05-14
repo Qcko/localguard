@@ -70,6 +70,81 @@ CLI_FRAMEWORK_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
 }
 
+# An async runtime (twisted, gevent, eventlet, curio, anyio backends).
+# These libraries run event loops, manage green-thread / coroutine
+# pools, do raw socket I/O, and write IPC files / unix sockets.
+# Relax listening_port, subprocess (process pools, signal handlers),
+# fs_write (state files, unix sockets), outbound (the runtime drives
+# arbitrary user-supplied protocols), hardcoded_host (test fixtures).
+# Stay strict on obfuscation and env_secret_read (runtime libs don't
+# legitimately need eval or read secrets), and the strict-by-design
+# surfaces.
+ASYNC_RUNTIME_WEIGHTS: dict[SurfaceKind, Weight] = {
+    SurfaceKind.OUTBOUND_NETWORK: Weight(2, 10),
+    SurfaceKind.OUTBOUND_DYNAMIC: Weight(4, 20),
+    SurfaceKind.LISTENING_PORT: Weight(5, 20),
+    SurfaceKind.SUBPROCESS: Weight(5, 20),
+    SurfaceKind.FS_WRITE: Weight(2, 10),
+    SurfaceKind.ENV_SECRET_READ: Weight(10, 20),
+    SurfaceKind.HARDCODED_HOST: Weight(1, 5),
+    SurfaceKind.TELEMETRY_ENDPOINT: Weight(10, 20),
+    SurfaceKind.OBFUSCATION: Weight(8, 60),
+    SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
+    SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
+    SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+}
+
+# A task queue / job runner (celery, rq, dramatiq, huey, arq, kombu).
+# Forks worker processes (subprocess), connects to a broker URL
+# (outbound + outbound_dynamic), reads broker credentials from env
+# (env_secret_read -- but those ARE credentials), writes job state /
+# results / heartbeat files (fs_write), and may bind a control port
+# (listening_port). Relax subprocess + outbound + fs_write +
+# listening_port + hardcoded_host. Stay strict on env_secret_read
+# (broker URLs contain passwords; reading them is the supply-chain
+# attack target) and on obfuscation + the strict-by-design surfaces.
+TASK_QUEUE_WEIGHTS: dict[SurfaceKind, Weight] = {
+    SurfaceKind.OUTBOUND_NETWORK: Weight(2, 10),
+    SurfaceKind.OUTBOUND_DYNAMIC: Weight(4, 20),
+    SurfaceKind.LISTENING_PORT: Weight(5, 20),
+    SurfaceKind.SUBPROCESS: Weight(5, 20),
+    SurfaceKind.FS_WRITE: Weight(2, 10),
+    SurfaceKind.ENV_SECRET_READ: Weight(10, 20),
+    SurfaceKind.HARDCODED_HOST: Weight(1, 5),
+    SurfaceKind.TELEMETRY_ENDPOINT: Weight(10, 20),
+    SurfaceKind.OBFUSCATION: Weight(8, 60),
+    SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
+    SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
+    SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+}
+
+# A notebook runtime (ipython, jupyterlab, notebook, ipykernel, jupyter-*).
+# Running arbitrary user-supplied code is the documented contract;
+# obfuscation findings (compile/exec) fire heavily by construction.
+# Mirrors template-engine: lower the obfuscation CAP from 60 to 30,
+# keep per_finding at 8 so a heavy-eval kernel still pays for the
+# count. Also relax subprocess (kernel spawn, jupyter-server worker),
+# listening_port (jupyter server, kernel transports), fs_write
+# (notebook state, output cells, .ipynb writes), outbound_dynamic
+# (configurable kernel URLs, model-API endpoints in notebook helpers),
+# hardcoded_host (default jupyter endpoints). Stay strict on
+# env_secret_read, telemetry, data_exfil -- the notebook library
+# itself should not read secrets even when it executes user code.
+NOTEBOOK_RUNTIME_WEIGHTS: dict[SurfaceKind, Weight] = {
+    SurfaceKind.OUTBOUND_NETWORK: Weight(2, 10),
+    SurfaceKind.OUTBOUND_DYNAMIC: Weight(4, 20),
+    SurfaceKind.LISTENING_PORT: Weight(5, 20),
+    SurfaceKind.SUBPROCESS: Weight(5, 20),
+    SurfaceKind.FS_WRITE: Weight(2, 10),
+    SurfaceKind.ENV_SECRET_READ: Weight(10, 20),
+    SurfaceKind.HARDCODED_HOST: Weight(1, 5),
+    SurfaceKind.TELEMETRY_ENDPOINT: Weight(10, 20),
+    SurfaceKind.OBFUSCATION: Weight(8, 30),
+    SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
+    SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
+    SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+}
+
 # A web application framework (django, flask, fastapi, starlette, sanic,
 # tornado, ...) is a full-stack monolith: it runs management commands
 # (subprocess), writes sessions / file uploads / migrations / static
@@ -392,6 +467,9 @@ PROFILE_OBSERVABILITY = "observability"
 PROFILE_FORMAT_CODEC = "format-codec"
 PROFILE_SCRAPING = "scraping"
 PROFILE_WEB_FRAMEWORK = "web-framework"
+PROFILE_ASYNC_RUNTIME = "async-runtime"
+PROFILE_TASK_QUEUE = "task-queue"
+PROFILE_NOTEBOOK_RUNTIME = "notebook-runtime"
 DEFAULT_PROFILE = PROFILE_PLUGIN
 
 PROFILE_WEIGHTS: dict[str, dict[SurfaceKind, Weight]] = {
@@ -411,6 +489,9 @@ PROFILE_WEIGHTS: dict[str, dict[SurfaceKind, Weight]] = {
     PROFILE_FORMAT_CODEC: FORMAT_CODEC_WEIGHTS,
     PROFILE_SCRAPING: SCRAPING_WEIGHTS,
     PROFILE_WEB_FRAMEWORK: WEB_FRAMEWORK_WEIGHTS,
+    PROFILE_ASYNC_RUNTIME: ASYNC_RUNTIME_WEIGHTS,
+    PROFILE_TASK_QUEUE: TASK_QUEUE_WEIGHTS,
+    PROFILE_NOTEBOOK_RUNTIME: NOTEBOOK_RUNTIME_WEIGHTS,
 }
 
 # Backwards-compat alias for any external caller.
@@ -507,6 +588,42 @@ WEB_SERVER_NAMES: set[str] = {
 # Web application frameworks -- the app-layer monoliths that hold routing,
 # middleware, templating integration, dev workflow. Distinct from
 # web-server (uvicorn/gunicorn, pure HTTP runners). Tight allowlist.
+# Async-runtime libraries (twisted, gevent, eventlet, curio) and the
+# protocol-agnostic concurrency primitives (anyio, trio). These libraries
+# drive event loops, manage green threads / coroutines, and do raw socket
+# I/O on user-supplied protocols. Tight allowlist.
+ASYNC_RUNTIME_NAMES: set[str] = {
+    "twisted", "gevent", "eventlet", "curio",
+    "anyio", "trio", "trio-asyncio",
+    "asgiref",  # ASGI runtime helpers, used by django + starlette
+}
+
+# Task queues / job runners. Worker-process model, broker connections,
+# job-state persistence. Tight allowlist; covers the major Python options.
+TASK_QUEUE_NAMES: set[str] = {
+    "celery", "kombu", "billiard",
+    "rq", "rq-scheduler",
+    "dramatiq",
+    "huey",
+    "arq",
+    "apscheduler",
+    "django-q", "django-celery-beat", "django-celery-results",
+}
+
+# Notebook runtimes -- ipython, jupyter family, notebook executors.
+# Executing arbitrary user-supplied code is the documented contract; the
+# obfuscation findings (compile/exec of cell source) are role-typical.
+NOTEBOOK_RUNTIME_NAMES: set[str] = {
+    "ipython",
+    "jupyter", "jupyter-core", "jupyter-client",
+    "jupyter-server", "jupyterlab", "jupyterlab-server",
+    "notebook",
+    "ipykernel", "ipywidgets",
+    "nbformat", "nbclient", "nbconvert",
+    "jupyter-events", "jupyter-lsp",
+}
+
+
 WEB_FRAMEWORK_NAMES: set[str] = {
     "django",
     "fastapi", "starlette",
@@ -524,7 +641,6 @@ SCRAPING_NAMES: set[str] = {
     "pyppeteer", "playwright-stealth",
     "scrapy-playwright", "scrapy-selenium",
     "selenium-wire", "undetected-chromedriver",
-    "twisted",  # scrapy's async runtime dependency, hard to use outside this role
 }
 
 
@@ -708,6 +824,12 @@ def detect_profile_from_name(name: str, ecosystem: str) -> tuple[str, str] | Non
             return PROFILE_SCRAPING, f"name-allowlist: {name}"
         if name in WEB_FRAMEWORK_NAMES:
             return PROFILE_WEB_FRAMEWORK, f"name-allowlist: {name}"
+        if name in ASYNC_RUNTIME_NAMES:
+            return PROFILE_ASYNC_RUNTIME, f"name-allowlist: {name}"
+        if name in TASK_QUEUE_NAMES:
+            return PROFILE_TASK_QUEUE, f"name-allowlist: {name}"
+        if name in NOTEBOOK_RUNTIME_NAMES:
+            return PROFILE_NOTEBOOK_RUNTIME, f"name-allowlist: {name}"
         return None
     if ecosystem == "npm":
         if name.startswith("@modelcontextprotocol/server-"):

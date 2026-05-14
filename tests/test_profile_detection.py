@@ -294,6 +294,45 @@ def test_django_fastapi_etc_detect_as_web_framework():
     )
 
 
+def test_twisted_gevent_etc_detect_as_async_runtime():
+    assert rubric.detect_profile_from_name("twisted", "pypi") == (
+        rubric.PROFILE_ASYNC_RUNTIME, "name-allowlist: twisted",
+    )
+    assert rubric.detect_profile_from_name("gevent", "pypi") == (
+        rubric.PROFILE_ASYNC_RUNTIME, "name-allowlist: gevent",
+    )
+    assert rubric.detect_profile_from_name("trio", "pypi") == (
+        rubric.PROFILE_ASYNC_RUNTIME, "name-allowlist: trio",
+    )
+
+
+def test_celery_rq_etc_detect_as_task_queue():
+    assert rubric.detect_profile_from_name("celery", "pypi") == (
+        rubric.PROFILE_TASK_QUEUE, "name-allowlist: celery",
+    )
+    assert rubric.detect_profile_from_name("rq", "pypi") == (
+        rubric.PROFILE_TASK_QUEUE, "name-allowlist: rq",
+    )
+    assert rubric.detect_profile_from_name("dramatiq", "pypi") == (
+        rubric.PROFILE_TASK_QUEUE, "name-allowlist: dramatiq",
+    )
+
+
+def test_ipython_jupyter_etc_detect_as_notebook_runtime():
+    assert rubric.detect_profile_from_name("ipython", "pypi") == (
+        rubric.PROFILE_NOTEBOOK_RUNTIME, "name-allowlist: ipython",
+    )
+    assert rubric.detect_profile_from_name("jupyterlab", "pypi") == (
+        rubric.PROFILE_NOTEBOOK_RUNTIME, "name-allowlist: jupyterlab",
+    )
+    assert rubric.detect_profile_from_name("ipykernel", "pypi") == (
+        rubric.PROFILE_NOTEBOOK_RUNTIME, "name-allowlist: ipykernel",
+    )
+    assert rubric.detect_profile_from_name("nbconvert", "pypi") == (
+        rubric.PROFILE_NOTEBOOK_RUNTIME, "name-allowlist: nbconvert",
+    )
+
+
 def test_normal_libraries_are_not_detected():
     assert rubric.detect_profile_from_name("lodash", "npm") is None
     assert rubric.detect_profile_from_name("mcp", "pypi") is None  # the SDK itself: library, not server
