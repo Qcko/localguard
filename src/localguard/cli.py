@@ -5,7 +5,7 @@ import json
 import sys
 from pathlib import Path
 
-from . import audit, cache as cache_mod, deps as deps_mod, diff, egress as egress_mod, hook, init_hook as init_hook_mod, inspect as inspect_mod, library_refresh as library_refresh_mod, manifest, preflight as preflight_mod
+from . import audit, cache as cache_mod, deps as deps_mod, diff, doctor as doctor_mod, egress as egress_mod, hook, init_hook as init_hook_mod, inspect as inspect_mod, library_refresh as library_refresh_mod, manifest, preflight as preflight_mod
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -29,6 +29,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_cache(sub)
     _add_egress(sub)
     _add_init_hook(sub)
+    _add_doctor(sub)
     _add_hook_bash(sub)
     return parser
 
@@ -363,6 +364,30 @@ def _finding_summary(report_dict: dict) -> str:
         return "findings: none"
     parts = [f"{n} {k}" for k, n in sorted(counts.items(), key=lambda kv: -kv[1])]
     return "findings: " + ", ".join(parts)
+
+
+def _add_doctor(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser("doctor", help="Self-test: verify binary on PATH, hook wired, library + cache consistent.")
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(handler=_handle_doctor)
+
+
+def _handle_doctor(args: argparse.Namespace) -> int:
+    report = doctor_mod.run()
+    if args.json:
+        _emit_json({
+            "ok": report.ok,
+            "warn": report.warn,
+            "fail": report.fail,
+            "checks": [{"name": c.name, "status": c.status, "detail": c.detail} for c in report.checks],
+        }, pretty=True)
+        return 0 if report.healthy else 1
+    width = max(len(c.name) for c in report.checks)
+    label = {"ok": "OK", "warn": "WARN", "fail": "FAIL"}
+    for c in report.checks:
+        sys.stdout.write(f"{c.name:<{width}}  {label[c.status]:<5}  {c.detail}\n")
+    sys.stdout.write(f"\ndoctor: {report.ok} ok, {report.warn} warn, {report.fail} fail\n")
+    return 0 if report.healthy else 1
 
 
 def _add_hook_bash(sub: argparse._SubParsersAction) -> None:
