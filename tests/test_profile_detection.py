@@ -279,6 +279,21 @@ def test_scrapy_selenium_etc_detect_as_scraping():
     )
 
 
+def test_django_fastapi_etc_detect_as_web_framework():
+    assert rubric.detect_profile_from_name("django", "pypi") == (
+        rubric.PROFILE_WEB_FRAMEWORK, "name-allowlist: django",
+    )
+    assert rubric.detect_profile_from_name("fastapi", "pypi") == (
+        rubric.PROFILE_WEB_FRAMEWORK, "name-allowlist: fastapi",
+    )
+    assert rubric.detect_profile_from_name("flask", "pypi") == (
+        rubric.PROFILE_WEB_FRAMEWORK, "name-allowlist: flask",
+    )
+    assert rubric.detect_profile_from_name("tornado", "pypi") == (
+        rubric.PROFILE_WEB_FRAMEWORK, "name-allowlist: tornado",
+    )
+
+
 def test_normal_libraries_are_not_detected():
     assert rubric.detect_profile_from_name("lodash", "npm") is None
     assert rubric.detect_profile_from_name("mcp", "pypi") is None  # the SDK itself: library, not server

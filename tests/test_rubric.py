@@ -367,6 +367,24 @@ def test_role_typical_share_split_when_mixed_surfaces_fire():
     assert breakdown.role_typical_share == round(10 / 30, 3)
 
 
+def test_web_framework_profile_relaxes_subprocess_and_fs_write():
+    sp = _surf(SurfaceKind.SUBPROCESS, 5)
+    fw = _surf(SurfaceKind.FS_WRITE, 8)
+    plugin_sp = rubric.score(sp, profile=rubric.PROFILE_PLUGIN)
+    wf_sp = rubric.score(sp, profile=rubric.PROFILE_WEB_FRAMEWORK)
+    plugin_fw = rubric.score(fw, profile=rubric.PROFILE_PLUGIN)
+    wf_fw = rubric.score(fw, profile=rubric.PROFILE_WEB_FRAMEWORK)
+    assert wf_sp.final_score > plugin_sp.final_score
+    assert wf_fw.final_score > plugin_fw.final_score
+
+
+def test_web_framework_profile_stays_strict_on_env_secret_and_obfuscation():
+    env = _surf(SurfaceKind.ENV_SECRET_READ, 3)
+    plugin_env = rubric.score(env, profile=rubric.PROFILE_PLUGIN)
+    wf_env = rubric.score(env, profile=rubric.PROFILE_WEB_FRAMEWORK)
+    assert plugin_env.final_score == wf_env.final_score
+
+
 def test_unknown_profile_falls_back_to_plugin_weights():
     findings = _surf(SurfaceKind.LISTENING_PORT, 5)
     bogus = rubric.score(findings, profile="not-a-real-profile")

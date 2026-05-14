@@ -70,6 +70,35 @@ CLI_FRAMEWORK_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
 }
 
+# A web application framework (django, flask, fastapi, starlette, sanic,
+# tornado, ...) is a full-stack monolith: it runs management commands
+# (subprocess), writes sessions / file uploads / migrations / static
+# assets (fs_write), binds a dev-server port (listening_port), and
+# occasionally reaches out to test fixtures or service-discovery endpoints
+# (outbound). Distinct from web-server (uvicorn/gunicorn -- pure HTTP
+# runners): a web-framework is the app layer that holds routing,
+# middleware, ORM helpers, template integration, and the dev workflow.
+# Relax subprocess + fs_write + listening_port + outbound + hardcoded_host.
+# Stay strict on obfuscation (django legitimately compile()s URL patterns,
+# but that surface is exactly where an attacker would hide too) and on
+# env_secret_read (SECRET_KEY / DATABASE_URL / JWT_SECRET reads are the
+# supply-chain target -- "django legitimately reads SECRET_KEY" and
+# "compromised django exfiltrates SECRET_KEY" are indistinguishable).
+WEB_FRAMEWORK_WEIGHTS: dict[SurfaceKind, Weight] = {
+    SurfaceKind.OUTBOUND_NETWORK: Weight(2, 10),
+    SurfaceKind.OUTBOUND_DYNAMIC: Weight(4, 20),
+    SurfaceKind.LISTENING_PORT: Weight(5, 20),
+    SurfaceKind.SUBPROCESS: Weight(5, 20),
+    SurfaceKind.FS_WRITE: Weight(2, 10),
+    SurfaceKind.ENV_SECRET_READ: Weight(10, 20),
+    SurfaceKind.HARDCODED_HOST: Weight(1, 5),
+    SurfaceKind.TELEMETRY_ENDPOINT: Weight(10, 20),
+    SurfaceKind.OBFUSCATION: Weight(8, 60),
+    SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
+    SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
+    SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+}
+
 # A browser-automation / scraping library's purpose is fetching arbitrary
 # user-supplied URLs (outbound_dynamic IS the role), launching browser
 # binaries or spider workers (subprocess), running a browser control
@@ -362,6 +391,7 @@ PROFILE_CLOUD_SDK = "cloud-sdk"
 PROFILE_OBSERVABILITY = "observability"
 PROFILE_FORMAT_CODEC = "format-codec"
 PROFILE_SCRAPING = "scraping"
+PROFILE_WEB_FRAMEWORK = "web-framework"
 DEFAULT_PROFILE = PROFILE_PLUGIN
 
 PROFILE_WEIGHTS: dict[str, dict[SurfaceKind, Weight]] = {
@@ -380,6 +410,7 @@ PROFILE_WEIGHTS: dict[str, dict[SurfaceKind, Weight]] = {
     PROFILE_OBSERVABILITY: OBSERVABILITY_WEIGHTS,
     PROFILE_FORMAT_CODEC: FORMAT_CODEC_WEIGHTS,
     PROFILE_SCRAPING: SCRAPING_WEIGHTS,
+    PROFILE_WEB_FRAMEWORK: WEB_FRAMEWORK_WEIGHTS,
 }
 
 # Backwards-compat alias for any external caller.
@@ -473,6 +504,19 @@ WEB_SERVER_NAMES: set[str] = {
 # Scraping and browser-automation libraries. Browser drivers (selenium,
 # playwright) and HTML/JS scrapers (scrapy, requests-html, mechanize).
 # Tight allowlist on purpose; the relaxations here are wide.
+# Web application frameworks -- the app-layer monoliths that hold routing,
+# middleware, templating integration, dev workflow. Distinct from
+# web-server (uvicorn/gunicorn, pure HTTP runners). Tight allowlist.
+WEB_FRAMEWORK_NAMES: set[str] = {
+    "django",
+    "fastapi", "starlette",
+    "flask", "quart",
+    "sanic", "falcon", "bottle", "pyramid",
+    "tornado",
+    "litestar",
+}
+
+
 SCRAPING_NAMES: set[str] = {
     "scrapy", "selenium", "playwright",
     "splinter", "requests-html",
@@ -662,6 +706,8 @@ def detect_profile_from_name(name: str, ecosystem: str) -> tuple[str, str] | Non
             return PROFILE_FORMAT_CODEC, f"name-allowlist: {name}"
         if name in SCRAPING_NAMES:
             return PROFILE_SCRAPING, f"name-allowlist: {name}"
+        if name in WEB_FRAMEWORK_NAMES:
+            return PROFILE_WEB_FRAMEWORK, f"name-allowlist: {name}"
         return None
     if ecosystem == "npm":
         if name.startswith("@modelcontextprotocol/server-"):
