@@ -28,10 +28,64 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_library(sub)
     _add_cache(sub)
     _add_egress(sub)
+    _add_diff_versions(sub)
     _add_init_hook(sub)
     _add_doctor(sub)
     _add_hook_bash(sub)
     return parser
+
+
+def _add_diff_versions(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser("diff-versions", help="Compare two versions of the same package; report new/removed surfaces and score delta.")
+    p.add_argument("name", help="Package name (e.g. requests or @modelcontextprotocol/server-filesystem).")
+    p.add_argument("from_version", metavar="FROM", help="Baseline version.")
+    p.add_argument("to_version", metavar="TO", help="Candidate version.")
+    p.add_argument("--ecosystem", choices=["pypi", "npm"], default=None)
+    p.add_argument("--json", action="store_true")
+    p.set_defaults(handler=_handle_diff_versions)
+
+
+def _handle_diff_versions(args: argparse.Namespace) -> int:
+    sep = "@" if (args.ecosystem == "npm" or args.name.startswith("@")) else "=="
+    from_spec = f"{args.name}{sep}{args.from_version}"
+    to_spec = f"{args.name}{sep}{args.to_version}"
+    from_report, from_pkg, _ = inspect_mod.inspect(from_spec, ecosystem=args.ecosystem)
+    to_report, to_pkg, _ = inspect_mod.inspect(to_spec, ecosystem=args.ecosystem)
+    drift = diff.diff_reports(from_report.to_dict(), to_report.to_dict())
+    payload = drift.to_dict()
+    payload["name"] = from_pkg.name
+    payload["ecosystem"] = from_pkg.ecosystem
+    payload["from_version"] = from_pkg.version
+    payload["to_version"] = to_pkg.version
+    if args.json:
+        _emit_json(payload, pretty=True)
+        return 0 if not drift.has_drift else 1
+    sys.stdout.write(f"{from_pkg.name} ({from_pkg.ecosystem}): {from_pkg.version} -> {to_pkg.version}\n")
+    delta = payload["score_delta"]
+    delta_str = f"{delta:+d}" if delta is not None else "?"
+    sys.stdout.write(f"score: {payload['score_before']} -> {payload['score_after']} ({delta_str})\n")
+    if drift.new_findings:
+        sys.stdout.write("\nNEW surfaces:\n")
+        for kind, items in drift.new_findings.items():
+            sys.stdout.write(f"  + {kind} ({len(items)})\n")
+            for f in items[:5]:
+                sys.stdout.write(f"      {_describe_finding(f)}\n")
+            if len(items) > 5:
+                sys.stdout.write(f"      ... +{len(items)-5} more\n")
+    if drift.removed_findings:
+        sys.stdout.write("\nREMOVED surfaces:\n")
+        for kind, items in drift.removed_findings.items():
+            sys.stdout.write(f"  - {kind} ({len(items)})\n")
+    if not drift.new_findings and not drift.removed_findings:
+        sys.stdout.write("\nno surface changes\n")
+    return 0 if not drift.has_drift else 1
+
+
+def _describe_finding(f: dict) -> str:
+    extra = f.get("extra") or {}
+    hint = extra.get("host") or extra.get("fqn") or extra.get("name") or extra.get("env_name") or extra.get("method") or ""
+    loc = f"{f.get('file', '?')}:{f.get('line', '?')}"
+    return f"{hint}  [{loc}]" if hint else loc
 
 
 def _add_egress(sub: argparse._SubParsersAction) -> None:
