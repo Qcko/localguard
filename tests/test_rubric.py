@@ -73,6 +73,28 @@ def test_cli_framework_profile_stays_strict_on_outbound():
     assert plugin.final_score == cli_fw.final_score
 
 
+def test_network_library_profile_relaxes_outbound():
+    findings = _surf(SurfaceKind.OUTBOUND_NETWORK, 10)
+    plugin = rubric.score(findings, profile=rubric.PROFILE_PLUGIN)
+    netlib = rubric.score(findings, profile=rubric.PROFILE_NETWORK_LIBRARY)
+    assert plugin.final_score == 100 - 25  # cap 25
+    assert netlib.final_score == 100 - 5   # cap 5 under network-library
+
+
+def test_network_library_profile_stays_strict_on_subprocess():
+    findings = _surf(SurfaceKind.SUBPROCESS, 4)
+    plugin = rubric.score(findings, profile=rubric.PROFILE_PLUGIN)
+    netlib = rubric.score(findings, profile=rubric.PROFILE_NETWORK_LIBRARY)
+    assert plugin.final_score == netlib.final_score
+
+
+def test_network_library_profile_stays_strict_on_listening_port():
+    findings = _surf(SurfaceKind.LISTENING_PORT, 3)
+    plugin = rubric.score(findings, profile=rubric.PROFILE_PLUGIN)
+    netlib = rubric.score(findings, profile=rubric.PROFILE_NETWORK_LIBRARY)
+    assert plugin.final_score == netlib.final_score
+
+
 def test_unknown_profile_falls_back_to_plugin_weights():
     findings = _surf(SurfaceKind.LISTENING_PORT, 5)
     bogus = rubric.score(findings, profile="not-a-real-profile")

@@ -90,11 +90,26 @@ def test_metadata_detection_npm_string_bin(tmp_path):
     assert result == (rubric.PROFILE_CLI_FRAMEWORK, "metadata: 1 bin entry point(s)")
 
 
+def test_requests_httpx_etc_detect_as_network_library():
+    assert rubric.detect_profile_from_name("requests", "pypi") == (
+        rubric.PROFILE_NETWORK_LIBRARY, "name-allowlist: requests",
+    )
+    assert rubric.detect_profile_from_name("httpx", "pypi") == (
+        rubric.PROFILE_NETWORK_LIBRARY, "name-allowlist: httpx",
+    )
+    assert rubric.detect_profile_from_name("urllib3", "pypi") == (
+        rubric.PROFILE_NETWORK_LIBRARY, "name-allowlist: urllib3",
+    )
+    assert rubric.detect_profile_from_name("aiohttp", "pypi") == (
+        rubric.PROFILE_NETWORK_LIBRARY, "name-allowlist: aiohttp",
+    )
+
+
 def test_normal_libraries_are_not_detected():
-    assert rubric.detect_profile_from_name("requests", "pypi") is None
     assert rubric.detect_profile_from_name("lodash", "npm") is None
     assert rubric.detect_profile_from_name("mcp", "pypi") is None  # the SDK itself: library, not server
     assert rubric.detect_profile_from_name("@modelcontextprotocol/sdk", "npm") is None
+    assert rubric.detect_profile_from_name("numpy", "pypi") is None
 
 
 def test_empty_or_unknown_ecosystem_returns_none():
