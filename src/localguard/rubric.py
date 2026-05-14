@@ -69,6 +69,24 @@ def weights_for(profile: str) -> dict[SurfaceKind, Weight]:
     return PROFILE_WEIGHTS.get(profile, PLUGIN_WEIGHTS)
 
 
+def detect_profile_from_content(findings: list[Finding]) -> tuple[str, str] | None:
+    """Apply mcp-server profile when the package registers MCP tools or resources in runtime code.
+
+    A package that exposes `@mcp.tool`, `@mcp.resource`, `server.tool(...)`, etc. in
+    its runtime sources IS an MCP server by definition. Findings inside tests/docs/
+    examples are filtered out via walker.find_context so the SDK's bundled examples
+    don't falsely upgrade the SDK itself.
+    """
+    runtime_mcp = sum(
+        1 for f in findings
+        if f.kind in {SurfaceKind.MCP_TOOL, SurfaceKind.MCP_RESOURCE}
+        and walker.find_context(f.file) == "runtime"
+    )
+    if runtime_mcp >= 1:
+        return PROFILE_MCP_SERVER, f"content: {runtime_mcp} mcp_tool/resource registration(s)"
+    return None
+
+
 def detect_profile_from_name(name: str, ecosystem: str) -> tuple[str, str] | None:
     """Apply mcp-server profile when the canonical package name follows the MCP-server convention.
 

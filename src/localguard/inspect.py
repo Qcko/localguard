@@ -16,7 +16,7 @@ def inspect(raw_spec: str, ecosystem: str | None = None, cache_root: Path | None
         detected = rubric.detect_profile_from_name(spec.name, spec.ecosystem)
         if detected:
             profile, profile_reason = detected
-    report = audit.audit_path(audit_root, profile=profile or rubric.DEFAULT_PROFILE, profile_reason=profile_reason)
+    report = audit.audit_path(audit_root, profile=profile, profile_reason=profile_reason)
     _override_metadata(report, spec)
     return report, spec, audit_root
 

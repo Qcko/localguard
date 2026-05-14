@@ -1,6 +1,33 @@
 from __future__ import annotations
 
 from localguard import rubric
+from localguard.report import Finding, SurfaceKind
+
+
+def _mcp_tool(file: str) -> Finding:
+    return Finding(kind=SurfaceKind.MCP_TOOL, file=file, line=1, detail="", confidence="literal", extra={})
+
+
+def _mcp_resource(file: str) -> Finding:
+    return Finding(kind=SurfaceKind.MCP_RESOURCE, file=file, line=1, detail="", confidence="literal", extra={})
+
+
+def test_content_detection_fires_on_runtime_mcp_tool():
+    result = rubric.detect_profile_from_content([_mcp_tool("server/tools.py")])
+    assert result is not None
+    assert result[0] == rubric.PROFILE_MCP_SERVER
+    assert "mcp_tool/resource" in result[1]
+
+
+def test_content_detection_ignores_test_dir_findings():
+    findings = [_mcp_tool("tests/test_tools.py"), _mcp_resource("examples/demo.py")]
+    assert rubric.detect_profile_from_content(findings) is None
+
+
+def test_content_detection_returns_none_when_no_mcp_findings():
+    from localguard.report import Finding, SurfaceKind
+    findings = [Finding(kind=SurfaceKind.SUBPROCESS, file="x.py", line=1, detail="", confidence="literal", extra={})]
+    assert rubric.detect_profile_from_content(findings) is None
 
 
 def test_pypi_mcp_server_prefix_detected():
