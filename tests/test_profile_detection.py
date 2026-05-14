@@ -105,6 +105,21 @@ def test_requests_httpx_etc_detect_as_network_library():
     )
 
 
+def test_uvicorn_gunicorn_etc_detect_as_web_server():
+    assert rubric.detect_profile_from_name("uvicorn", "pypi") == (
+        rubric.PROFILE_WEB_SERVER, "name-allowlist: uvicorn",
+    )
+    assert rubric.detect_profile_from_name("gunicorn", "pypi") == (
+        rubric.PROFILE_WEB_SERVER, "name-allowlist: gunicorn",
+    )
+    assert rubric.detect_profile_from_name("hypercorn", "pypi") == (
+        rubric.PROFILE_WEB_SERVER, "name-allowlist: hypercorn",
+    )
+    assert rubric.detect_profile_from_name("granian", "pypi") == (
+        rubric.PROFILE_WEB_SERVER, "name-allowlist: granian",
+    )
+
+
 def test_normal_libraries_are_not_detected():
     assert rubric.detect_profile_from_name("lodash", "npm") is None
     assert rubric.detect_profile_from_name("mcp", "pypi") is None  # the SDK itself: library, not server

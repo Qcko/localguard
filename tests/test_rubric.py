@@ -95,6 +95,28 @@ def test_network_library_profile_stays_strict_on_listening_port():
     assert plugin.final_score == netlib.final_score
 
 
+def test_web_server_profile_relaxes_listening_port():
+    findings = _surf(SurfaceKind.LISTENING_PORT, 5)
+    plugin = rubric.score(findings, profile=rubric.PROFILE_PLUGIN)
+    web = rubric.score(findings, profile=rubric.PROFILE_WEB_SERVER)
+    assert plugin.final_score < web.final_score
+    assert web.final_score == 100  # zero-weight under web-server
+
+
+def test_web_server_profile_stays_strict_on_outbound():
+    findings = _surf(SurfaceKind.OUTBOUND_NETWORK, 6)
+    plugin = rubric.score(findings, profile=rubric.PROFILE_PLUGIN)
+    web = rubric.score(findings, profile=rubric.PROFILE_WEB_SERVER)
+    assert plugin.final_score == web.final_score
+
+
+def test_web_server_profile_relaxes_fs_write():
+    findings = _surf(SurfaceKind.FS_WRITE, 5)
+    plugin = rubric.score(findings, profile=rubric.PROFILE_PLUGIN)
+    web = rubric.score(findings, profile=rubric.PROFILE_WEB_SERVER)
+    assert web.final_score > plugin.final_score
+
+
 def test_unknown_profile_falls_back_to_plugin_weights():
     findings = _surf(SurfaceKind.LISTENING_PORT, 5)
     bogus = rubric.score(findings, profile="not-a-real-profile")

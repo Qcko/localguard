@@ -70,6 +70,26 @@ CLI_FRAMEWORK_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
 }
 
+# A web server's purpose is to bind to a port, accept connections, fork worker
+# processes (gunicorn/hypercorn), and write logs/pidfiles/unix sockets. Relax
+# listening_port, subprocess, and fs_write. Stay strict on outbound (a web
+# server reaching the network outbound is suspicious -- it's there to serve,
+# not phone home), on obfuscation, and on the strict-by-design surfaces.
+WEB_SERVER_WEIGHTS: dict[SurfaceKind, Weight] = {
+    SurfaceKind.OUTBOUND_NETWORK: Weight(5, 25),
+    SurfaceKind.OUTBOUND_DYNAMIC: Weight(10, 40),
+    SurfaceKind.LISTENING_PORT: Weight(0, 0),
+    SurfaceKind.SUBPROCESS: Weight(5, 20),
+    SurfaceKind.FS_WRITE: Weight(2, 10),
+    SurfaceKind.ENV_SECRET_READ: Weight(10, 20),
+    SurfaceKind.HARDCODED_HOST: Weight(2, 10),
+    SurfaceKind.TELEMETRY_ENDPOINT: Weight(10, 20),
+    SurfaceKind.OBFUSCATION: Weight(8, 60),
+    SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
+    SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
+    SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+}
+
 # An HTTP client library's whole purpose is making outbound network calls to
 # arbitrary user-supplied hosts. Relax outbound_network, outbound_dynamic, and
 # hardcoded_host (which fire on the bundled default-host constants and example
@@ -96,6 +116,7 @@ PROFILE_PLUGIN = "plugin"
 PROFILE_MCP_SERVER = "mcp-server"
 PROFILE_CLI_FRAMEWORK = "cli-framework"
 PROFILE_NETWORK_LIBRARY = "network-library"
+PROFILE_WEB_SERVER = "web-server"
 DEFAULT_PROFILE = PROFILE_PLUGIN
 
 PROFILE_WEIGHTS: dict[str, dict[SurfaceKind, Weight]] = {
@@ -103,6 +124,7 @@ PROFILE_WEIGHTS: dict[str, dict[SurfaceKind, Weight]] = {
     PROFILE_MCP_SERVER: MCP_SERVER_WEIGHTS,
     PROFILE_CLI_FRAMEWORK: CLI_FRAMEWORK_WEIGHTS,
     PROFILE_NETWORK_LIBRARY: NETWORK_LIBRARY_WEIGHTS,
+    PROFILE_WEB_SERVER: WEB_SERVER_WEIGHTS,
 }
 
 # Backwards-compat alias for any external caller.
@@ -149,6 +171,15 @@ NETWORK_LIBRARY_NAMES: set[str] = {
     "requests", "httpx", "httpcore", "urllib3", "aiohttp", "niquests",
 }
 
+# Well-known Python web servers / WSGI/ASGI runners. Tight allowlist on purpose
+# -- these are short, well-known names; package metadata does not distinguish a
+# web server from any other library that declares an entry point (gunicorn et
+# al. would otherwise resolve as cli-framework, which would NOT relax
+# listening_port). Canonical (PEP 503) names.
+WEB_SERVER_NAMES: set[str] = {
+    "uvicorn", "gunicorn", "hypercorn", "granian", "waitress", "daphne",
+}
+
 
 def detect_profile_from_name(name: str, ecosystem: str) -> tuple[str, str] | None:
     """Apply a role profile based on the canonical package name.
@@ -165,6 +196,8 @@ def detect_profile_from_name(name: str, ecosystem: str) -> tuple[str, str] | Non
             return PROFILE_CLI_FRAMEWORK, f"name-allowlist: {name}"
         if name in NETWORK_LIBRARY_NAMES:
             return PROFILE_NETWORK_LIBRARY, f"name-allowlist: {name}"
+        if name in WEB_SERVER_NAMES:
+            return PROFILE_WEB_SERVER, f"name-allowlist: {name}"
         return None
     if ecosystem == "npm":
         if name.startswith("@modelcontextprotocol/server-"):
