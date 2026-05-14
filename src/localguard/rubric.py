@@ -70,6 +70,97 @@ CLI_FRAMEWORK_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
 }
 
+# A template engine's whole job is to compile() user-supplied template
+# strings into Python bytecode. Obfuscation findings will be high by
+# construction. Lower the obfuscation cap (30 vs plugin's 60) so a
+# template engine doesn't auto-zero, but DO NOT lower per-finding -- a
+# template lib with 20 distinct compile() callsites is still a stronger
+# signal than one with 5, and an attacker payload would add new
+# callsites just like legitimate template features. Stay strict on
+# everything else: a template engine should not network, listen, or shell.
+TEMPLATE_ENGINE_WEIGHTS: dict[SurfaceKind, Weight] = {
+    SurfaceKind.OUTBOUND_NETWORK: Weight(5, 25),
+    SurfaceKind.OUTBOUND_DYNAMIC: Weight(10, 40),
+    SurfaceKind.LISTENING_PORT: Weight(15, 45),
+    SurfaceKind.SUBPROCESS: Weight(15, 40),
+    SurfaceKind.FS_WRITE: Weight(2, 10),
+    SurfaceKind.ENV_SECRET_READ: Weight(10, 20),
+    SurfaceKind.HARDCODED_HOST: Weight(2, 10),
+    SurfaceKind.TELEMETRY_ENDPOINT: Weight(10, 20),
+    SurfaceKind.OBFUSCATION: Weight(8, 30),
+    SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
+    SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
+    SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+}
+
+# A test framework's purpose is forking worker processes (xdist), writing
+# coverage reports / cache / junit XML, and parsing argv. Relax subprocess,
+# fs_write, hardcoded_host (CI URLs in default templates). Stay strict on
+# outbound (a test framework reaching the network unprompted is suspicious),
+# obfuscation (pytest's plugin magic is suspicious-shaped but a real attacker
+# could hide payloads in the same surface), listening_port, and the
+# strict-by-design surfaces.
+TEST_FRAMEWORK_WEIGHTS: dict[SurfaceKind, Weight] = {
+    SurfaceKind.OUTBOUND_NETWORK: Weight(5, 25),
+    SurfaceKind.OUTBOUND_DYNAMIC: Weight(10, 40),
+    SurfaceKind.LISTENING_PORT: Weight(15, 45),
+    SurfaceKind.SUBPROCESS: Weight(5, 20),
+    SurfaceKind.FS_WRITE: Weight(2, 10),
+    SurfaceKind.ENV_SECRET_READ: Weight(10, 20),
+    SurfaceKind.HARDCODED_HOST: Weight(1, 5),
+    SurfaceKind.TELEMETRY_ENDPOINT: Weight(10, 20),
+    SurfaceKind.OBFUSCATION: Weight(8, 60),
+    SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
+    SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
+    SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+}
+
+# A cloud SDK's purpose is making API calls to provider endpoints (regional
+# hostnames built from region + service), reading credentials from env vars
+# (AWS_*, GOOGLE_*, AZURE_*), and writing credential / cache files to disk.
+# Relax outbound + outbound_dynamic + hardcoded_host + fs_write. Stay strict
+# on subprocess (a cloud SDK should not shell out), listening_port, and on
+# env_secret_read (the credentials a cloud SDK reads are EXACTLY what an
+# attacker wants -- "boto3 legitimately reads AWS_SECRET_ACCESS_KEY" and
+# "compromised boto3 exfiltrates AWS_SECRET_ACCESS_KEY" are observationally
+# indistinguishable; manual accept is the right answer for high-count cases).
+CLOUD_SDK_WEIGHTS: dict[SurfaceKind, Weight] = {
+    SurfaceKind.OUTBOUND_NETWORK: Weight(2, 10),
+    SurfaceKind.OUTBOUND_DYNAMIC: Weight(4, 20),
+    SurfaceKind.LISTENING_PORT: Weight(15, 45),
+    SurfaceKind.SUBPROCESS: Weight(15, 40),
+    SurfaceKind.FS_WRITE: Weight(2, 10),
+    SurfaceKind.ENV_SECRET_READ: Weight(10, 20),
+    SurfaceKind.HARDCODED_HOST: Weight(1, 5),
+    SurfaceKind.TELEMETRY_ENDPOINT: Weight(10, 20),
+    SurfaceKind.OBFUSCATION: Weight(8, 60),
+    SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
+    SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
+    SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+}
+
+# An observability library's purpose is to send telemetry to a backend --
+# the TELEMETRY_ENDPOINT surface IS the role. Without relaxing it, sentry-sdk
+# / opentelemetry-* / datadog all sit at low scores by default. Relax
+# telemetry_endpoint (2/cap 10), outbound_network, outbound_dynamic,
+# hardcoded_host, and fs_write (buffer / span files). Stay strict on
+# subprocess, listening_port, env_secret_read (DSN tokens are credentials),
+# obfuscation, and the strict-by-design surfaces.
+OBSERVABILITY_WEIGHTS: dict[SurfaceKind, Weight] = {
+    SurfaceKind.OUTBOUND_NETWORK: Weight(2, 10),
+    SurfaceKind.OUTBOUND_DYNAMIC: Weight(4, 20),
+    SurfaceKind.LISTENING_PORT: Weight(15, 45),
+    SurfaceKind.SUBPROCESS: Weight(15, 40),
+    SurfaceKind.FS_WRITE: Weight(2, 10),
+    SurfaceKind.ENV_SECRET_READ: Weight(10, 20),
+    SurfaceKind.HARDCODED_HOST: Weight(1, 5),
+    SurfaceKind.TELEMETRY_ENDPOINT: Weight(2, 10),
+    SurfaceKind.OBFUSCATION: Weight(8, 60),
+    SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
+    SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
+    SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+}
+
 # A database driver / ORM's purpose is to open outbound connections to a
 # specific protocol on a user-supplied host (DSN parsing -> outbound_dynamic),
 # to read connection credentials from env vars (DATABASE_URL et al), and to
@@ -218,6 +309,10 @@ PROFILE_BUILD_TOOL = "build-tool"
 PROFILE_DATA_SCIENCE = "data-science"
 PROFILE_ML_FRAMEWORK = "ml-framework"
 PROFILE_DATABASE_DRIVER = "database-driver"
+PROFILE_TEMPLATE_ENGINE = "template-engine"
+PROFILE_TEST_FRAMEWORK = "test-framework"
+PROFILE_CLOUD_SDK = "cloud-sdk"
+PROFILE_OBSERVABILITY = "observability"
 DEFAULT_PROFILE = PROFILE_PLUGIN
 
 PROFILE_WEIGHTS: dict[str, dict[SurfaceKind, Weight]] = {
@@ -230,6 +325,10 @@ PROFILE_WEIGHTS: dict[str, dict[SurfaceKind, Weight]] = {
     PROFILE_DATA_SCIENCE: DATA_SCIENCE_WEIGHTS,
     PROFILE_ML_FRAMEWORK: ML_FRAMEWORK_WEIGHTS,
     PROFILE_DATABASE_DRIVER: DATABASE_DRIVER_WEIGHTS,
+    PROFILE_TEMPLATE_ENGINE: TEMPLATE_ENGINE_WEIGHTS,
+    PROFILE_TEST_FRAMEWORK: TEST_FRAMEWORK_WEIGHTS,
+    PROFILE_CLOUD_SDK: CLOUD_SDK_WEIGHTS,
+    PROFILE_OBSERVABILITY: OBSERVABILITY_WEIGHTS,
 }
 
 # Backwards-compat alias for any external caller.
@@ -301,6 +400,64 @@ WEB_SERVER_NAMES: set[str] = {
 # allowlist on purpose -- there are MANY niche DB clients and the goal is to
 # cover the high-volume cases without overreaching. Canonical (PEP 503)
 # names.
+# Well-known Python template engines. Tight allowlist; their entire job
+# is compile() of template ASTs. Excludes Django/Tornado/Flask -- those
+# are web frameworks where templating is one subsystem.
+TEMPLATE_ENGINE_NAMES: set[str] = {
+    "jinja2", "mako", "chevron", "genshi", "cheetah3",
+    "pystache", "wheezy.template",
+}
+
+# Test frameworks and the test-tool ecosystem. Excludes mock/responses
+# (these are unit-test helper libs, not frameworks).
+TEST_FRAMEWORK_NAMES: set[str] = {
+    "pytest", "hypothesis", "tox", "nox",
+    "coverage", "pytest-cov", "pytest-xdist", "pytest-asyncio",
+    "pytest-mock", "pytest-django", "pytest-flask", "pytest-benchmark",
+    "pytest-timeout", "pytest-randomly", "pytest-rerunfailures",
+    "pytest-sugar", "pytest-html",
+    "parameterized", "freezegun", "vcrpy",
+}
+
+# Major cloud SDK families. AWS (boto3 + botocore + transfer + cli),
+# Google Cloud client libraries + auth, Azure SDK core + identity +
+# common services, Kubernetes / OpenShift, HashiCorp Vault.
+CLOUD_SDK_NAMES: set[str] = {
+    # AWS
+    "boto3", "botocore", "s3transfer", "awscli", "aiobotocore",
+    # GCP
+    "google-cloud-storage", "google-cloud-core", "google-cloud-bigquery",
+    "google-cloud-pubsub", "google-cloud-firestore",
+    "google-cloud-secret-manager", "google-auth",
+    "google-api-python-client", "google-api-core",
+    "google-resumable-media",
+    # Azure
+    "azure-core", "azure-identity",
+    "azure-storage-blob", "azure-storage-file-share",
+    "azure-keyvault-secrets", "azure-keyvault-keys",
+    "azure-keyvault-certificates",
+    # K8s + secrets backends
+    "kubernetes", "openshift", "hvac",
+}
+
+# Observability libraries -- error tracking, distributed tracing, APMs,
+# structured logging that ships to a backend. OpenTelemetry is sprawling;
+# the allowlist covers the SDK and the common exporters.
+OBSERVABILITY_NAMES: set[str] = {
+    "sentry-sdk",
+    "opentelemetry-api", "opentelemetry-sdk",
+    "opentelemetry-instrumentation",
+    "opentelemetry-exporter-otlp",
+    "opentelemetry-exporter-otlp-proto-grpc",
+    "opentelemetry-exporter-otlp-proto-http",
+    "opentelemetry-exporter-prometheus",
+    "opentelemetry-distro",
+    "structlog", "loguru", "python-json-logger",
+    "ddtrace", "datadog",
+    "newrelic", "scout-apm", "elastic-apm",
+    "prometheus-client", "statsd",
+}
+
 DATABASE_DRIVER_NAMES: set[str] = {
     # PostgreSQL
     "psycopg", "psycopg-binary", "psycopg-pool",
@@ -391,6 +548,14 @@ def detect_profile_from_name(name: str, ecosystem: str) -> tuple[str, str] | Non
             return PROFILE_ML_FRAMEWORK, f"name-allowlist: {name}"
         if name in DATABASE_DRIVER_NAMES:
             return PROFILE_DATABASE_DRIVER, f"name-allowlist: {name}"
+        if name in TEMPLATE_ENGINE_NAMES:
+            return PROFILE_TEMPLATE_ENGINE, f"name-allowlist: {name}"
+        if name in TEST_FRAMEWORK_NAMES:
+            return PROFILE_TEST_FRAMEWORK, f"name-allowlist: {name}"
+        if name in CLOUD_SDK_NAMES:
+            return PROFILE_CLOUD_SDK, f"name-allowlist: {name}"
+        if name in OBSERVABILITY_NAMES:
+            return PROFILE_OBSERVABILITY, f"name-allowlist: {name}"
         return None
     if ecosystem == "npm":
         if name.startswith("@modelcontextprotocol/server-"):

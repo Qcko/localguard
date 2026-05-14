@@ -189,6 +189,66 @@ def test_sqlalchemy_pymongo_etc_detect_as_database_driver():
     )
 
 
+def test_jinja2_mako_etc_detect_as_template_engine():
+    assert rubric.detect_profile_from_name("jinja2", "pypi") == (
+        rubric.PROFILE_TEMPLATE_ENGINE, "name-allowlist: jinja2",
+    )
+    assert rubric.detect_profile_from_name("mako", "pypi") == (
+        rubric.PROFILE_TEMPLATE_ENGINE, "name-allowlist: mako",
+    )
+    assert rubric.detect_profile_from_name("chevron", "pypi") == (
+        rubric.PROFILE_TEMPLATE_ENGINE, "name-allowlist: chevron",
+    )
+
+
+def test_pytest_hypothesis_etc_detect_as_test_framework():
+    assert rubric.detect_profile_from_name("pytest", "pypi") == (
+        rubric.PROFILE_TEST_FRAMEWORK, "name-allowlist: pytest",
+    )
+    assert rubric.detect_profile_from_name("hypothesis", "pypi") == (
+        rubric.PROFILE_TEST_FRAMEWORK, "name-allowlist: hypothesis",
+    )
+    assert rubric.detect_profile_from_name("coverage", "pypi") == (
+        rubric.PROFILE_TEST_FRAMEWORK, "name-allowlist: coverage",
+    )
+    assert rubric.detect_profile_from_name("tox", "pypi") == (
+        rubric.PROFILE_TEST_FRAMEWORK, "name-allowlist: tox",
+    )
+
+
+def test_boto3_azure_etc_detect_as_cloud_sdk():
+    assert rubric.detect_profile_from_name("boto3", "pypi") == (
+        rubric.PROFILE_CLOUD_SDK, "name-allowlist: boto3",
+    )
+    assert rubric.detect_profile_from_name("botocore", "pypi") == (
+        rubric.PROFILE_CLOUD_SDK, "name-allowlist: botocore",
+    )
+    assert rubric.detect_profile_from_name("google-auth", "pypi") == (
+        rubric.PROFILE_CLOUD_SDK, "name-allowlist: google-auth",
+    )
+    assert rubric.detect_profile_from_name("azure-identity", "pypi") == (
+        rubric.PROFILE_CLOUD_SDK, "name-allowlist: azure-identity",
+    )
+    assert rubric.detect_profile_from_name("kubernetes", "pypi") == (
+        rubric.PROFILE_CLOUD_SDK, "name-allowlist: kubernetes",
+    )
+
+
+def test_sentry_otel_etc_detect_as_observability():
+    assert rubric.detect_profile_from_name("sentry-sdk", "pypi") == (
+        rubric.PROFILE_OBSERVABILITY, "name-allowlist: sentry-sdk",
+    )
+    assert rubric.detect_profile_from_name("opentelemetry-sdk", "pypi") == (
+        rubric.PROFILE_OBSERVABILITY, "name-allowlist: opentelemetry-sdk",
+    )
+    assert rubric.detect_profile_from_name("ddtrace", "pypi") == (
+        rubric.PROFILE_OBSERVABILITY, "name-allowlist: ddtrace",
+    )
+    assert rubric.detect_profile_from_name("structlog", "pypi") == (
+        rubric.PROFILE_OBSERVABILITY, "name-allowlist: structlog",
+    )
+
+
 def test_normal_libraries_are_not_detected():
     assert rubric.detect_profile_from_name("lodash", "npm") is None
     assert rubric.detect_profile_from_name("mcp", "pypi") is None  # the SDK itself: library, not server

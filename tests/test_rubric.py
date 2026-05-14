@@ -208,6 +208,74 @@ def test_database_driver_profile_stays_strict_on_subprocess():
     assert plugin.final_score == db.final_score
 
 
+def test_template_engine_profile_lowers_obfuscation_cap():
+    findings = _surf(SurfaceKind.OBFUSCATION, 20)
+    plugin = rubric.score(findings, profile=rubric.PROFILE_PLUGIN)
+    tpl = rubric.score(findings, profile=rubric.PROFILE_TEMPLATE_ENGINE)
+    assert plugin.final_score == 100 - 60  # plugin cap
+    assert tpl.final_score == 100 - 30     # template-engine cap
+
+
+def test_template_engine_profile_stays_strict_on_outbound():
+    findings = _surf(SurfaceKind.OUTBOUND_NETWORK, 6)
+    plugin = rubric.score(findings, profile=rubric.PROFILE_PLUGIN)
+    tpl = rubric.score(findings, profile=rubric.PROFILE_TEMPLATE_ENGINE)
+    assert plugin.final_score == tpl.final_score
+
+
+def test_test_framework_profile_relaxes_subprocess():
+    findings = _surf(SurfaceKind.SUBPROCESS, 5)
+    plugin = rubric.score(findings, profile=rubric.PROFILE_PLUGIN)
+    tf = rubric.score(findings, profile=rubric.PROFILE_TEST_FRAMEWORK)
+    assert plugin.final_score == 100 - 40
+    assert tf.final_score == 100 - 20
+
+
+def test_test_framework_profile_stays_strict_on_outbound():
+    findings = _surf(SurfaceKind.OUTBOUND_NETWORK, 6)
+    plugin = rubric.score(findings, profile=rubric.PROFILE_PLUGIN)
+    tf = rubric.score(findings, profile=rubric.PROFILE_TEST_FRAMEWORK)
+    assert plugin.final_score == tf.final_score
+
+
+def test_cloud_sdk_profile_relaxes_outbound():
+    findings = _surf(SurfaceKind.OUTBOUND_NETWORK, 10)
+    plugin = rubric.score(findings, profile=rubric.PROFILE_PLUGIN)
+    csk = rubric.score(findings, profile=rubric.PROFILE_CLOUD_SDK)
+    assert plugin.final_score == 100 - 25
+    assert csk.final_score == 100 - 10
+
+
+def test_cloud_sdk_profile_stays_strict_on_env_secret_and_subprocess():
+    env_findings = _surf(SurfaceKind.ENV_SECRET_READ, 3)
+    sp_findings = _surf(SurfaceKind.SUBPROCESS, 4)
+    plugin_env = rubric.score(env_findings, profile=rubric.PROFILE_PLUGIN)
+    csk_env = rubric.score(env_findings, profile=rubric.PROFILE_CLOUD_SDK)
+    plugin_sp = rubric.score(sp_findings, profile=rubric.PROFILE_PLUGIN)
+    csk_sp = rubric.score(sp_findings, profile=rubric.PROFILE_CLOUD_SDK)
+    assert plugin_env.final_score == csk_env.final_score
+    assert plugin_sp.final_score == csk_sp.final_score
+
+
+def test_observability_profile_relaxes_telemetry_endpoint():
+    findings = _surf(SurfaceKind.TELEMETRY_ENDPOINT, 6)
+    plugin = rubric.score(findings, profile=rubric.PROFILE_PLUGIN)
+    obs = rubric.score(findings, profile=rubric.PROFILE_OBSERVABILITY)
+    assert plugin.final_score == 100 - 20  # plugin cap
+    assert obs.final_score == 100 - 10     # observability cap
+
+
+def test_observability_profile_stays_strict_on_subprocess_and_env_secret():
+    sp = _surf(SurfaceKind.SUBPROCESS, 4)
+    env = _surf(SurfaceKind.ENV_SECRET_READ, 3)
+    plugin_sp = rubric.score(sp, profile=rubric.PROFILE_PLUGIN)
+    obs_sp = rubric.score(sp, profile=rubric.PROFILE_OBSERVABILITY)
+    plugin_env = rubric.score(env, profile=rubric.PROFILE_PLUGIN)
+    obs_env = rubric.score(env, profile=rubric.PROFILE_OBSERVABILITY)
+    assert plugin_sp.final_score == obs_sp.final_score
+    assert plugin_env.final_score == obs_env.final_score
+
+
 def test_unknown_profile_falls_back_to_plugin_weights():
     findings = _surf(SurfaceKind.LISTENING_PORT, 5)
     bogus = rubric.score(findings, profile="not-a-real-profile")
