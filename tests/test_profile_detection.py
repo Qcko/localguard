@@ -50,6 +50,46 @@ def test_npm_bare_mcp_server_prefix_detected():
     assert rubric.detect_profile_from_name("mcp-server-foo", "npm") is not None
 
 
+def test_click_typer_etc_detect_as_cli_framework():
+    assert rubric.detect_profile_from_name("click", "pypi") == (rubric.PROFILE_CLI_FRAMEWORK, "name-allowlist: click")
+    assert rubric.detect_profile_from_name("typer", "pypi") == (rubric.PROFILE_CLI_FRAMEWORK, "name-allowlist: typer")
+    assert rubric.detect_profile_from_name("fire", "pypi") == (rubric.PROFILE_CLI_FRAMEWORK, "name-allowlist: fire")
+
+
+def test_metadata_detection_pypi_console_scripts(tmp_path):
+    (tmp_path / "pyproject.toml").write_text("""
+[project]
+name = "demo-cli"
+version = "1.0"
+[project.scripts]
+demo = "demo.main:cli"
+""", encoding="utf-8")
+    assert rubric.detect_profile_from_metadata(tmp_path, "pypi") == (
+        rubric.PROFILE_CLI_FRAMEWORK, "metadata: 1 console-script entry point(s)",
+    )
+
+
+def test_metadata_detection_pypi_no_scripts(tmp_path):
+    (tmp_path / "pyproject.toml").write_text("""
+[project]
+name = "demo"
+version = "1.0"
+""", encoding="utf-8")
+    assert rubric.detect_profile_from_metadata(tmp_path, "pypi") is None
+
+
+def test_metadata_detection_npm_bin(tmp_path):
+    (tmp_path / "package.json").write_text('{"name":"demo","version":"1.0","bin":{"demo":"./cli.js","demo-x":"./xcli.js"}}', encoding="utf-8")
+    result = rubric.detect_profile_from_metadata(tmp_path, "npm")
+    assert result == (rubric.PROFILE_CLI_FRAMEWORK, "metadata: 2 bin entry point(s)")
+
+
+def test_metadata_detection_npm_string_bin(tmp_path):
+    (tmp_path / "package.json").write_text('{"name":"demo","version":"1.0","bin":"./cli.js"}', encoding="utf-8")
+    result = rubric.detect_profile_from_metadata(tmp_path, "npm")
+    assert result == (rubric.PROFILE_CLI_FRAMEWORK, "metadata: 1 bin entry point(s)")
+
+
 def test_normal_libraries_are_not_detected():
     assert rubric.detect_profile_from_name("requests", "pypi") is None
     assert rubric.detect_profile_from_name("lodash", "npm") is None

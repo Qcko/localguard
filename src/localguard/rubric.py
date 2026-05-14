@@ -50,13 +50,35 @@ MCP_SERVER_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
 }
 
+# A CLI framework's whole purpose is to dispatch user-supplied commands to
+# subprocesses and write user-requested output to disk. Relax those two surfaces.
+# Stay strict on everything network-shaped (a CLI tool reaching the network
+# unprompted is suspicious), on obfuscation (CLIs don't legitimately need eval),
+# and on the strict-by-design surfaces (env_secret_read, telemetry, data-exfil).
+CLI_FRAMEWORK_WEIGHTS: dict[SurfaceKind, Weight] = {
+    SurfaceKind.OUTBOUND_NETWORK: Weight(5, 25),
+    SurfaceKind.OUTBOUND_DYNAMIC: Weight(10, 40),
+    SurfaceKind.LISTENING_PORT: Weight(15, 45),
+    SurfaceKind.SUBPROCESS: Weight(2, 10),
+    SurfaceKind.FS_WRITE: Weight(2, 10),
+    SurfaceKind.ENV_SECRET_READ: Weight(10, 20),
+    SurfaceKind.HARDCODED_HOST: Weight(2, 10),
+    SurfaceKind.TELEMETRY_ENDPOINT: Weight(10, 20),
+    SurfaceKind.OBFUSCATION: Weight(8, 60),
+    SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
+    SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
+    SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+}
+
 PROFILE_PLUGIN = "plugin"
 PROFILE_MCP_SERVER = "mcp-server"
+PROFILE_CLI_FRAMEWORK = "cli-framework"
 DEFAULT_PROFILE = PROFILE_PLUGIN
 
 PROFILE_WEIGHTS: dict[str, dict[SurfaceKind, Weight]] = {
     PROFILE_PLUGIN: PLUGIN_WEIGHTS,
     PROFILE_MCP_SERVER: MCP_SERVER_WEIGHTS,
+    PROFILE_CLI_FRAMEWORK: CLI_FRAMEWORK_WEIGHTS,
 }
 
 # Backwards-compat alias for any external caller.
@@ -87,23 +109,79 @@ def detect_profile_from_content(findings: list[Finding]) -> tuple[str, str] | No
     return None
 
 
-def detect_profile_from_name(name: str, ecosystem: str) -> tuple[str, str] | None:
-    """Apply mcp-server profile when the canonical package name follows the MCP-server convention.
+# Well-known CLI framework packages. Tight allowlist on purpose -- these are
+# libraries whose entire purpose is dispatching subprocesses based on user input,
+# they have no package-metadata signal (they don't declare scripts themselves),
+# and they are widely depended-upon. Names check against canonical form.
+CLI_FRAMEWORK_NAMES: set[str] = {
+    "click", "typer", "cleo", "fire", "docopt", "docopt-ng", "rich-click",
+}
 
-    Conservative on purpose -- only prefix matches that are very unlikely to fire
-    on a non-MCP-server library. Returns (profile, reason) or None.
+
+def detect_profile_from_name(name: str, ecosystem: str) -> tuple[str, str] | None:
+    """Apply a role profile based on the canonical package name.
+
+    Conservative on purpose -- prefix matches and tight allowlists only.
+    Returns (profile, reason) or None.
     """
     if not name:
         return None
     if ecosystem == "pypi":
         if name.startswith("mcp-server-"):
             return PROFILE_MCP_SERVER, "name-convention: mcp-server-*"
+        if name in CLI_FRAMEWORK_NAMES:
+            return PROFILE_CLI_FRAMEWORK, f"name-allowlist: {name}"
         return None
     if ecosystem == "npm":
         if name.startswith("@modelcontextprotocol/server-"):
             return PROFILE_MCP_SERVER, "name-convention: @modelcontextprotocol/server-*"
         if name.startswith("mcp-server-"):
             return PROFILE_MCP_SERVER, "name-convention: mcp-server-*"
+        return None
+    return None
+
+
+def detect_profile_from_metadata(audit_root, ecosystem: str) -> tuple[str, str] | None:
+    """Apply cli-framework profile when the package declares executable entry points.
+
+    pypi: pyproject.toml [project.scripts] OR [project.entry-points.console_scripts].
+    npm: package.json `bin` (string or dict).
+
+    Catches CLI *tools* (ruff, black, mypy) which declare console_scripts. Does NOT
+    catch the underlying frameworks like click/typer themselves -- those are handled
+    by the name allowlist in detect_profile_from_name.
+    """
+    from pathlib import Path
+    import json
+    import tomllib
+    root = Path(audit_root)
+    if ecosystem == "pypi":
+        pyproject = root / "pyproject.toml"
+        if not pyproject.exists():
+            return None
+        try:
+            data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+        except (OSError, tomllib.TOMLDecodeError):
+            return None
+        project = data.get("project") or {}
+        scripts = project.get("scripts") or {}
+        console = ((project.get("entry-points") or {}).get("console_scripts")) or {}
+        if scripts or console:
+            n = len(scripts) + len(console)
+            return PROFILE_CLI_FRAMEWORK, f"metadata: {n} console-script entry point(s)"
+        return None
+    if ecosystem == "npm":
+        package_json = root / "package.json"
+        if not package_json.exists():
+            return None
+        try:
+            data = json.loads(package_json.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return None
+        bin_field = data.get("bin")
+        if bin_field:
+            n = len(bin_field) if isinstance(bin_field, dict) else 1
+            return PROFILE_CLI_FRAMEWORK, f"metadata: {n} bin entry point(s)"
         return None
     return None
 

@@ -16,7 +16,7 @@ def audit_path(target: Path, *, profile: str | None = None, profile_reason: str 
     findings = text_sweep.dedupe_hosts(findings)
     metadata = _detect_metadata(target)
     if profile is None:
-        detected = rubric.detect_profile_from_content(findings)
+        detected = rubric.detect_profile_from_content(findings) or rubric.detect_profile_from_metadata(target, metadata.get("ecosystem") or "unknown")
         if detected:
             profile, profile_reason = detected
     effective_profile = profile or rubric.DEFAULT_PROFILE

@@ -542,11 +542,11 @@ def _handle_audit(args: argparse.Namespace) -> int:
     return 0
 
 
-def _resolve_profile(args: argparse.Namespace) -> tuple[str, str | None]:
+def _resolve_profile(args: argparse.Namespace) -> tuple[str | None, str | None]:
     explicit = getattr(args, "profile", None)
     if explicit:
         return explicit, f"manual: --profile {explicit}"
-    return rubric.DEFAULT_PROFILE, None
+    return None, None  # Let the detection chain in inspect/audit decide.
 
 
 def _handle_pin(args: argparse.Namespace) -> int:

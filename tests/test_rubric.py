@@ -58,6 +58,21 @@ def test_mcp_server_profile_stays_strict_on_obfuscation():
     assert plugin.final_score == server.final_score
 
 
+def test_cli_framework_profile_relaxes_subprocess():
+    findings = _surf(SurfaceKind.SUBPROCESS, 5)
+    plugin = rubric.score(findings, profile=rubric.PROFILE_PLUGIN)
+    cli_fw = rubric.score(findings, profile=rubric.PROFILE_CLI_FRAMEWORK)
+    assert plugin.final_score == 100 - 40  # cap at 40
+    assert cli_fw.final_score == 100 - 10  # cap at 10 under cli-framework (5*2=10)
+
+
+def test_cli_framework_profile_stays_strict_on_outbound():
+    findings = _surf(SurfaceKind.OUTBOUND_NETWORK, 6)
+    plugin = rubric.score(findings, profile=rubric.PROFILE_PLUGIN)
+    cli_fw = rubric.score(findings, profile=rubric.PROFILE_CLI_FRAMEWORK)
+    assert plugin.final_score == cli_fw.final_score
+
+
 def test_unknown_profile_falls_back_to_plugin_weights():
     findings = _surf(SurfaceKind.LISTENING_PORT, 5)
     bogus = rubric.score(findings, profile="not-a-real-profile")
