@@ -69,6 +69,27 @@ def weights_for(profile: str) -> dict[SurfaceKind, Weight]:
     return PROFILE_WEIGHTS.get(profile, PLUGIN_WEIGHTS)
 
 
+def detect_profile_from_name(name: str, ecosystem: str) -> tuple[str, str] | None:
+    """Apply mcp-server profile when the canonical package name follows the MCP-server convention.
+
+    Conservative on purpose -- only prefix matches that are very unlikely to fire
+    on a non-MCP-server library. Returns (profile, reason) or None.
+    """
+    if not name:
+        return None
+    if ecosystem == "pypi":
+        if name.startswith("mcp-server-"):
+            return PROFILE_MCP_SERVER, "name-convention: mcp-server-*"
+        return None
+    if ecosystem == "npm":
+        if name.startswith("@modelcontextprotocol/server-"):
+            return PROFILE_MCP_SERVER, "name-convention: @modelcontextprotocol/server-*"
+        if name.startswith("mcp-server-"):
+            return PROFILE_MCP_SERVER, "name-convention: mcp-server-*"
+        return None
+    return None
+
+
 def score(findings: list[Finding], weights: dict[SurfaceKind, Weight] | None = None, *, profile: str = DEFAULT_PROFILE) -> ScoreBreakdown:
     weights = weights or weights_for(profile)
     runtime = [f for f in findings if walker.find_context(f.file) == "runtime"]
