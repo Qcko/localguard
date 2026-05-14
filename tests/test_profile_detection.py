@@ -414,6 +414,193 @@ def test_chromadb_pinecone_etc_detect_as_database_driver():
     )
 
 
+def test_npm_express_fastify_etc_detect_as_web_framework():
+    assert rubric.detect_profile_from_name("express", "npm") == (
+        rubric.PROFILE_WEB_FRAMEWORK, "name-allowlist: express",
+    )
+    assert rubric.detect_profile_from_name("fastify", "npm") == (
+        rubric.PROFILE_WEB_FRAMEWORK, "name-allowlist: fastify",
+    )
+    assert rubric.detect_profile_from_name("@nestjs/core", "npm") == (
+        rubric.PROFILE_WEB_FRAMEWORK, "name-allowlist: @nestjs/core",
+    )
+    assert rubric.detect_profile_from_name("next", "npm") == (
+        rubric.PROFILE_WEB_FRAMEWORK, "name-allowlist: next",
+    )
+
+
+def test_npm_axios_node_fetch_etc_detect_as_network_library():
+    assert rubric.detect_profile_from_name("axios", "npm") == (
+        rubric.PROFILE_NETWORK_LIBRARY, "name-allowlist: axios",
+    )
+    assert rubric.detect_profile_from_name("got", "npm") == (
+        rubric.PROFILE_NETWORK_LIBRARY, "name-allowlist: got",
+    )
+    assert rubric.detect_profile_from_name("node-fetch", "npm") == (
+        rubric.PROFILE_NETWORK_LIBRARY, "name-allowlist: node-fetch",
+    )
+
+
+def test_npm_webpack_vite_etc_detect_as_build_tool():
+    assert rubric.detect_profile_from_name("webpack", "npm") == (
+        rubric.PROFILE_BUILD_TOOL, "name-allowlist: webpack",
+    )
+    assert rubric.detect_profile_from_name("vite", "npm") == (
+        rubric.PROFILE_BUILD_TOOL, "name-allowlist: vite",
+    )
+    assert rubric.detect_profile_from_name("@swc/core", "npm") == (
+        rubric.PROFILE_BUILD_TOOL, "name-allowlist: @swc/core",
+    )
+
+
+def test_npm_aws_sdk_scoped_detects_as_cloud_sdk():
+    """Scoped @aws-sdk/* packages should all resolve via prefix match."""
+    assert rubric.detect_profile_from_name("@aws-sdk/client-s3", "npm") == (
+        rubric.PROFILE_CLOUD_SDK, "name-allowlist: @aws-sdk/client-s3",
+    )
+    assert rubric.detect_profile_from_name("@aws-sdk/client-dynamodb", "npm") == (
+        rubric.PROFILE_CLOUD_SDK, "name-allowlist: @aws-sdk/client-dynamodb",
+    )
+    assert rubric.detect_profile_from_name("@azure/identity", "npm") == (
+        rubric.PROFILE_CLOUD_SDK, "name-allowlist: @azure/identity",
+    )
+    assert rubric.detect_profile_from_name("@google-cloud/storage", "npm") == (
+        rubric.PROFILE_CLOUD_SDK, "name-allowlist: @google-cloud/storage",
+    )
+
+
+def test_npm_sentry_opentelemetry_scoped_detect_as_observability():
+    assert rubric.detect_profile_from_name("@sentry/node", "npm") == (
+        rubric.PROFILE_OBSERVABILITY, "name-allowlist: @sentry/node",
+    )
+    assert rubric.detect_profile_from_name("@opentelemetry/api", "npm") == (
+        rubric.PROFILE_OBSERVABILITY, "name-allowlist: @opentelemetry/api",
+    )
+    assert rubric.detect_profile_from_name("winston", "npm") == (
+        rubric.PROFILE_OBSERVABILITY, "name-allowlist: winston",
+    )
+
+
+def test_npm_langchain_ai_etc_detect_as_agentic_framework():
+    assert rubric.detect_profile_from_name("langchain", "npm") == (
+        rubric.PROFILE_AGENTIC_FRAMEWORK, "name-allowlist: langchain",
+    )
+    assert rubric.detect_profile_from_name("@langchain/core", "npm") == (
+        rubric.PROFILE_AGENTIC_FRAMEWORK, "name-allowlist: @langchain/core",
+    )
+    assert rubric.detect_profile_from_name("ai", "npm") == (
+        rubric.PROFILE_AGENTIC_FRAMEWORK, "name-allowlist: ai",
+    )
+    assert rubric.detect_profile_from_name("openai", "npm") == (
+        rubric.PROFILE_AGENTIC_FRAMEWORK, "name-allowlist: openai",
+    )
+
+
+def test_npm_jest_vitest_etc_detect_as_test_framework():
+    assert rubric.detect_profile_from_name("jest", "npm") == (
+        rubric.PROFILE_TEST_FRAMEWORK, "name-allowlist: jest",
+    )
+    assert rubric.detect_profile_from_name("vitest", "npm") == (
+        rubric.PROFILE_TEST_FRAMEWORK, "name-allowlist: vitest",
+    )
+    assert rubric.detect_profile_from_name("mocha", "npm") == (
+        rubric.PROFILE_TEST_FRAMEWORK, "name-allowlist: mocha",
+    )
+
+
+def test_npm_mongoose_prisma_etc_detect_as_database_driver():
+    assert rubric.detect_profile_from_name("mongoose", "npm") == (
+        rubric.PROFILE_DATABASE_DRIVER, "name-allowlist: mongoose",
+    )
+    assert rubric.detect_profile_from_name("@prisma/client", "npm") == (
+        rubric.PROFILE_DATABASE_DRIVER, "name-allowlist: @prisma/client",
+    )
+    assert rubric.detect_profile_from_name("ioredis", "npm") == (
+        rubric.PROFILE_DATABASE_DRIVER, "name-allowlist: ioredis",
+    )
+
+
+def test_npm_puppeteer_playwright_detect_as_scraping():
+    assert rubric.detect_profile_from_name("puppeteer", "npm") == (
+        rubric.PROFILE_SCRAPING, "name-allowlist: puppeteer",
+    )
+    assert rubric.detect_profile_from_name("playwright", "npm") == (
+        rubric.PROFILE_SCRAPING, "name-allowlist: playwright",
+    )
+
+
+def test_npm_sharp_marked_etc_detect_as_format_codec():
+    assert rubric.detect_profile_from_name("sharp", "npm") == (
+        rubric.PROFILE_FORMAT_CODEC, "name-allowlist: sharp",
+    )
+    assert rubric.detect_profile_from_name("marked", "npm") == (
+        rubric.PROFILE_FORMAT_CODEC, "name-allowlist: marked",
+    )
+
+
+def test_npm_commander_yargs_etc_detect_as_cli_framework():
+    assert rubric.detect_profile_from_name("commander", "npm") == (
+        rubric.PROFILE_CLI_FRAMEWORK, "name-allowlist: commander",
+    )
+    assert rubric.detect_profile_from_name("yargs", "npm") == (
+        rubric.PROFILE_CLI_FRAMEWORK, "name-allowlist: yargs",
+    )
+
+
+def test_npm_handlebars_pug_etc_detect_as_template_engine():
+    assert rubric.detect_profile_from_name("handlebars", "npm") == (
+        rubric.PROFILE_TEMPLATE_ENGINE, "name-allowlist: handlebars",
+    )
+    assert rubric.detect_profile_from_name("pug", "npm") == (
+        rubric.PROFILE_TEMPLATE_ENGINE, "name-allowlist: pug",
+    )
+
+
+def test_npm_bull_bullmq_etc_detect_as_task_queue():
+    assert rubric.detect_profile_from_name("bullmq", "npm") == (
+        rubric.PROFILE_TASK_QUEUE, "name-allowlist: bullmq",
+    )
+    assert rubric.detect_profile_from_name("agenda", "npm") == (
+        rubric.PROFILE_TASK_QUEUE, "name-allowlist: agenda",
+    )
+
+
+def test_npm_tensorflow_etc_detect_as_ml_framework():
+    assert rubric.detect_profile_from_name("@tensorflow/tfjs", "npm") == (
+        rubric.PROFILE_ML_FRAMEWORK, "name-allowlist: @tensorflow/tfjs",
+    )
+    assert rubric.detect_profile_from_name("@xenova/transformers", "npm") == (
+        rubric.PROFILE_ML_FRAMEWORK, "name-allowlist: @xenova/transformers",
+    )
+
+
+def test_npm_temporalio_scoped_detects_as_workflow_orchestrator():
+    assert rubric.detect_profile_from_name("@temporalio/client", "npm") == (
+        rubric.PROFILE_WORKFLOW_ORCHESTRATOR, "name-allowlist: @temporalio/client",
+    )
+    assert rubric.detect_profile_from_name("@temporalio/worker", "npm") == (
+        rubric.PROFILE_WORKFLOW_ORCHESTRATOR, "name-allowlist: @temporalio/worker",
+    )
+
+
+def test_npm_typedoc_docusaurus_etc_detect_as_doc_builder():
+    assert rubric.detect_profile_from_name("typedoc", "npm") == (
+        rubric.PROFILE_DOC_BUILDER, "name-allowlist: typedoc",
+    )
+    assert rubric.detect_profile_from_name("@docusaurus/core", "npm") == (
+        rubric.PROFILE_DOC_BUILDER, "name-allowlist: @docusaurus/core",
+    )
+    assert rubric.detect_profile_from_name("vitepress", "npm") == (
+        rubric.PROFILE_DOC_BUILDER, "name-allowlist: vitepress",
+    )
+
+
+def test_npm_unknown_packages_are_not_detected():
+    assert rubric.detect_profile_from_name("lodash", "npm") is None
+    assert rubric.detect_profile_from_name("zod", "npm") is None
+    assert rubric.detect_profile_from_name("@modelcontextprotocol/sdk", "npm") is None
+
+
 def test_normal_libraries_are_not_detected():
     assert rubric.detect_profile_from_name("lodash", "npm") is None
     assert rubric.detect_profile_from_name("mcp", "pypi") is None  # the SDK itself: library, not server

@@ -1066,8 +1066,217 @@ def detect_profile_from_name(name: str, ecosystem: str) -> tuple[str, str] | Non
             return PROFILE_MCP_SERVER, "name-convention: @modelcontextprotocol/server-*"
         if name.startswith("mcp-server-"):
             return PROFILE_MCP_SERVER, "name-convention: mcp-server-*"
+        if name in CLI_FRAMEWORK_NPM_NAMES:
+            return PROFILE_CLI_FRAMEWORK, f"name-allowlist: {name}"
+        if name in NETWORK_LIBRARY_NPM_NAMES:
+            return PROFILE_NETWORK_LIBRARY, f"name-allowlist: {name}"
+        if name in BUILD_TOOL_NPM_NAMES:
+            return PROFILE_BUILD_TOOL, f"name-allowlist: {name}"
+        if name in ML_FRAMEWORK_NPM_NAMES:
+            return PROFILE_ML_FRAMEWORK, f"name-allowlist: {name}"
+        if name in DATABASE_DRIVER_NPM_NAMES:
+            return PROFILE_DATABASE_DRIVER, f"name-allowlist: {name}"
+        if name in TEMPLATE_ENGINE_NPM_NAMES:
+            return PROFILE_TEMPLATE_ENGINE, f"name-allowlist: {name}"
+        if name in TEST_FRAMEWORK_NPM_NAMES:
+            return PROFILE_TEST_FRAMEWORK, f"name-allowlist: {name}"
+        if name in CLOUD_SDK_NPM_NAMES or any(name.startswith(p) for p in CLOUD_SDK_NPM_PREFIXES):
+            return PROFILE_CLOUD_SDK, f"name-allowlist: {name}"
+        if name in OBSERVABILITY_NPM_NAMES or any(name.startswith(p) for p in OBSERVABILITY_NPM_PREFIXES):
+            return PROFILE_OBSERVABILITY, f"name-allowlist: {name}"
+        if name in FORMAT_CODEC_NPM_NAMES:
+            return PROFILE_FORMAT_CODEC, f"name-allowlist: {name}"
+        if name in SCRAPING_NPM_NAMES:
+            return PROFILE_SCRAPING, f"name-allowlist: {name}"
+        if name in WEB_FRAMEWORK_NPM_NAMES or any(name.startswith(p) for p in WEB_FRAMEWORK_NPM_PREFIXES):
+            return PROFILE_WEB_FRAMEWORK, f"name-allowlist: {name}"
+        if name in TASK_QUEUE_NPM_NAMES:
+            return PROFILE_TASK_QUEUE, f"name-allowlist: {name}"
+        if name in WORKFLOW_ORCHESTRATOR_NPM_NAMES or any(name.startswith(p) for p in WORKFLOW_ORCHESTRATOR_NPM_PREFIXES):
+            return PROFILE_WORKFLOW_ORCHESTRATOR, f"name-allowlist: {name}"
+        if name in DOC_BUILDER_NPM_NAMES or any(name.startswith(p) for p in DOC_BUILDER_NPM_PREFIXES):
+            return PROFILE_DOC_BUILDER, f"name-allowlist: {name}"
+        if name in AGENTIC_FRAMEWORK_NPM_NAMES or any(name.startswith(p) for p in AGENTIC_FRAMEWORK_NPM_PREFIXES):
+            return PROFILE_AGENTIC_FRAMEWORK, f"name-allowlist: {name}"
         return None
     return None
+
+
+# ============================================================================
+# NPM allowlists -- mirror the pypi allowlists with canonical npm package
+# names. NPM-specific concerns:
+# - Scoped names like `@aws-sdk/client-s3` are common; we use prefix match
+#   for "all packages under this scope" (CLOUD_SDK_NPM_PREFIXES) alongside
+#   the exact-name set.
+# - NPM has no "web-server" category distinct from web-framework -- the
+#   server is part of the framework runtime in JS.
+# - notebook-runtime, data-app, gui-toolkit, data-science are deliberately
+#   excluded from npm parity: jupyter has no JS analog, electron is too
+#   large and varied to score under one profile, and JS data-science is
+#   diffuse (no numpy equivalent).
+# Conservative on purpose: same scoping principles as the pypi side --
+# tight allowlists, defer when in doubt, prefer manual review.
+# ============================================================================
+
+CLI_FRAMEWORK_NPM_NAMES: set[str] = {
+    "commander", "yargs", "oclif", "@oclif/core",
+    "inquirer", "@inquirer/prompts", "meow", "mri",
+    "minimist", "arg",
+}
+
+NETWORK_LIBRARY_NPM_NAMES: set[str] = {
+    "axios", "node-fetch", "got", "ky", "superagent",
+    "undici", "isomorphic-fetch", "cross-fetch", "phin",
+    "needle", "request",  # legacy
+}
+
+BUILD_TOOL_NPM_NAMES: set[str] = {
+    "webpack", "rollup", "vite", "parcel", "esbuild",
+    "@swc/core", "swc", "@parcel/core",
+    "gulp", "grunt", "browserify", "snowpack",
+    "turbo", "nx", "lerna", "tsup", "microbundle",
+    "tsc", "typescript",  # tsc is build-shaped
+    "@vitejs/plugin-react", "@vitejs/plugin-vue",  # commonly seen
+}
+
+ML_FRAMEWORK_NPM_NAMES: set[str] = {
+    "@tensorflow/tfjs", "@tensorflow/tfjs-node",
+    "@tensorflow/tfjs-node-gpu", "@tensorflow/tfjs-core",
+    "onnxruntime-node", "onnxruntime-web",
+    "@huggingface/inference", "@huggingface/hub",
+    "@xenova/transformers",  # transformers.js
+    "brain.js", "ml-matrix", "synaptic",
+}
+
+DATABASE_DRIVER_NPM_NAMES: set[str] = {
+    # SQL drivers
+    "mysql", "mysql2", "pg", "postgres", "mssql",
+    "sqlite3", "better-sqlite3",
+    # NoSQL
+    "mongodb", "mongoose", "ioredis", "redis", "memcached",
+    # ORMs
+    "sequelize", "knex", "prisma", "@prisma/client",
+    "drizzle-orm", "typeorm", "mikro-orm", "objection",
+    # Vector stores
+    "chromadb", "@pinecone-database/pinecone",
+    "weaviate-ts-client", "@qdrant/js-client-rest",
+    # Message brokers
+    "amqplib", "kafkajs", "@rabbitmq/client",
+    "nats", "@nats-io/transport-node",
+}
+
+TEMPLATE_ENGINE_NPM_NAMES: set[str] = {
+    "handlebars", "mustache", "pug", "nunjucks",
+    "ejs", "dust", "dustjs-linkedin", "eta", "dot",
+    "art-template", "twig",
+}
+
+TEST_FRAMEWORK_NPM_NAMES: set[str] = {
+    "mocha", "jest", "vitest", "jasmine", "ava",
+    "tape", "qunit", "karma",
+    "@jest/core", "@jest/globals", "@vitest/runner",
+    "@vitest/coverage-v8", "@vitest/expect",
+    "sinon", "chai", "expect",
+    "supertest", "nock",
+    "@testing-library/jest-dom", "@testing-library/react",
+}
+
+CLOUD_SDK_NPM_NAMES: set[str] = {
+    "aws-sdk",  # legacy v2 bundle
+    "@azure/core-rest-pipeline",
+    "@google-cloud/storage", "@google-cloud/firestore",
+    "@google-cloud/pubsub", "@google-cloud/bigquery",
+    "@google-cloud/secret-manager", "google-auth-library",
+    "kubernetes-client", "@kubernetes/client-node",
+}
+CLOUD_SDK_NPM_PREFIXES: tuple[str, ...] = (
+    "@aws-sdk/",        # @aws-sdk/client-s3, @aws-sdk/client-dynamodb, ...
+    "@azure/storage-", "@azure/identity", "@azure/keyvault-",
+    "@azure/data-",
+    "@google-cloud/",   # any google-cloud-* package
+)
+
+OBSERVABILITY_NPM_NAMES: set[str] = {
+    "winston", "pino", "bunyan", "debug", "loglevel",
+    "dd-trace", "datadog-metrics",
+    "newrelic",
+    "elastic-apm-node",
+}
+OBSERVABILITY_NPM_PREFIXES: tuple[str, ...] = (
+    "@sentry/",          # @sentry/node, @sentry/browser, @sentry/nextjs, ...
+    "@opentelemetry/",   # @opentelemetry/api, @opentelemetry/sdk-node, ...
+    "@datadog/",         # @datadog/datadog-ci, @datadog/browser-rum, ...
+    "@elastic/apm-",
+)
+
+FORMAT_CODEC_NPM_NAMES: set[str] = {
+    # Images
+    "sharp", "jimp", "@napi-rs/image",
+    # PDF
+    "pdfkit", "jspdf", "pdf-lib", "html-pdf",
+    # Spreadsheets
+    "exceljs", "xlsx", "node-xlsx",
+    # Markdown / HTML
+    "marked", "markdown-it", "remark", "rehype",
+    "showdown", "turndown",
+    # XML / HTML
+    "cheerio", "jsdom", "xml2js", "fast-xml-parser",
+    "htmlparser2", "parse5",
+}
+
+SCRAPING_NPM_NAMES: set[str] = {
+    "puppeteer", "puppeteer-core",
+    "playwright", "@playwright/test", "playwright-core",
+    "nightwatch", "webdriverio", "@wdio/cli",
+    "crawlee",
+}
+
+WEB_FRAMEWORK_NPM_NAMES: set[str] = {
+    "express", "fastify", "koa", "@koa/router",
+    "hapi", "@hapi/hapi", "@hapi/cookie",
+    "sails", "restify",
+    "polka", "micro", "h3", "hono",
+    "next", "@nuxt/core", "nuxt", "remix",
+    "@sveltejs/kit",
+}
+WEB_FRAMEWORK_NPM_PREFIXES: tuple[str, ...] = (
+    "@nestjs/",          # @nestjs/core, @nestjs/common, @nestjs/platform-express
+)
+
+TASK_QUEUE_NPM_NAMES: set[str] = {
+    "bull", "bullmq", "agenda", "bee-queue", "kue",
+    "@bullmq/ui",
+}
+
+WORKFLOW_ORCHESTRATOR_NPM_NAMES: set[str] = {
+    "temporalio",
+}
+WORKFLOW_ORCHESTRATOR_NPM_PREFIXES: tuple[str, ...] = (
+    "@temporalio/",      # @temporalio/client, @temporalio/worker, ...
+)
+
+DOC_BUILDER_NPM_NAMES: set[str] = {
+    "typedoc", "jsdoc",
+    "docusaurus", "@docusaurus/core",
+    "vitepress", "vuepress",
+    "redoc", "redoc-cli",
+}
+DOC_BUILDER_NPM_PREFIXES: tuple[str, ...] = (
+    "@docusaurus/",
+    "@vuepress/",
+)
+
+AGENTIC_FRAMEWORK_NPM_NAMES: set[str] = {
+    "langchain", "ai",  # vercel ai sdk
+    "openai", "@anthropic-ai/sdk",
+    "llamaindex", "@llamaindex/core",
+    "@google/generative-ai", "@cohere-ai/cohere-typescript",
+}
+AGENTIC_FRAMEWORK_NPM_PREFIXES: tuple[str, ...] = (
+    "@langchain/",       # @langchain/core, @langchain/openai, ...
+    "@llamaindex/",
+    "@anthropic-ai/",    # @anthropic-ai/bedrock-sdk, ...
+)
 
 
 def detect_profile_from_metadata(audit_root, ecosystem: str) -> tuple[str, str] | None:
