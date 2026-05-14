@@ -42,6 +42,26 @@ class Finding:
 class ScoreBreakdown:
     final_score: int
     deductions: list[dict[str, Any]] = field(default_factory=list)
+    # Share of total deductions explained by surfaces the active profile
+    # explicitly relaxes (i.e., "role-typical" findings). 0.0 means every
+    # deduction is on a strict-by-design surface (suspicious); 1.0 means
+    # every deduction is exactly what the role profile expects (likely
+    # fine to manually accept). Computed by rubric.score.
+    role_typical_share: float = 0.0
+
+
+# Library entry status. Legacy reports written before this field exists
+# are treated as `accepted` (the original semantics: presence in the
+# library == user accepted).
+class LibraryStatus(str, Enum):
+    ACCEPTED = "accepted"
+    # Blocked under the configured threshold, but >=80% of the deductions
+    # land on surfaces the role profile relaxes. The findings are role-
+    # typical and the package is most likely safe to manually accept.
+    BLOCKED_ROLE_TYPICAL = "blocked-role-typical"
+    # Blocked AND role-atypical deductions dominate -- the findings are
+    # on strict-by-design surfaces. Manual review strongly recommended.
+    BLOCKED_SUSPICIOUS = "blocked-suspicious"
 
 
 @dataclass
@@ -56,6 +76,7 @@ class AuditReport:
     files_audited: int = 0
     profile: str = "plugin"
     profile_reason: str | None = None
+    status: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -67,6 +88,7 @@ class AuditReport:
             "files_audited": self.files_audited,
             "profile": self.profile,
             "profile_reason": self.profile_reason,
+            "status": self.status,
             "score": asdict(self.score) if self.score else None,
             "findings": [_finding_to_dict(f) for f in self.findings],
         }

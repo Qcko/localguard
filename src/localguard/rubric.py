@@ -70,6 +70,30 @@ CLI_FRAMEWORK_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
 }
 
+# A browser-automation / scraping library's purpose is fetching arbitrary
+# user-supplied URLs (outbound_dynamic IS the role), launching browser
+# binaries or spider workers (subprocess), running a browser control
+# protocol locally (listening_port -- playwright's CDP/WebSocket inspector),
+# and writing scraped output or screenshots to disk (fs_write). Relax all
+# of those. Stay strict on obfuscation, env_secret_read (real credentials
+# remain credentials), telemetry, data_exfil, and the strict-by-design
+# surfaces -- a malicious scraping lib that wants to exfiltrate creds still
+# pays full price on those.
+SCRAPING_WEIGHTS: dict[SurfaceKind, Weight] = {
+    SurfaceKind.OUTBOUND_NETWORK: Weight(2, 10),
+    SurfaceKind.OUTBOUND_DYNAMIC: Weight(2, 10),
+    SurfaceKind.LISTENING_PORT: Weight(5, 20),
+    SurfaceKind.SUBPROCESS: Weight(5, 20),
+    SurfaceKind.FS_WRITE: Weight(2, 10),
+    SurfaceKind.ENV_SECRET_READ: Weight(10, 20),
+    SurfaceKind.HARDCODED_HOST: Weight(1, 5),
+    SurfaceKind.TELEMETRY_ENDPOINT: Weight(10, 20),
+    SurfaceKind.OBFUSCATION: Weight(8, 60),
+    SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
+    SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
+    SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+}
+
 # A format / codec library's purpose is parsing or emitting file formats
 # (images, XML/HTML, spreadsheets, PDFs, audio) -- they shell out to native
 # decoders (libjpeg, libxml2, pandoc, ffmpeg), write tempfiles and decoded
@@ -337,6 +361,7 @@ PROFILE_TEST_FRAMEWORK = "test-framework"
 PROFILE_CLOUD_SDK = "cloud-sdk"
 PROFILE_OBSERVABILITY = "observability"
 PROFILE_FORMAT_CODEC = "format-codec"
+PROFILE_SCRAPING = "scraping"
 DEFAULT_PROFILE = PROFILE_PLUGIN
 
 PROFILE_WEIGHTS: dict[str, dict[SurfaceKind, Weight]] = {
@@ -354,6 +379,7 @@ PROFILE_WEIGHTS: dict[str, dict[SurfaceKind, Weight]] = {
     PROFILE_CLOUD_SDK: CLOUD_SDK_WEIGHTS,
     PROFILE_OBSERVABILITY: OBSERVABILITY_WEIGHTS,
     PROFILE_FORMAT_CODEC: FORMAT_CODEC_WEIGHTS,
+    PROFILE_SCRAPING: SCRAPING_WEIGHTS,
 }
 
 # Backwards-compat alias for any external caller.
@@ -444,6 +470,20 @@ WEB_SERVER_NAMES: set[str] = {
 # File-format / codec libraries -- image, XML/HTML, spreadsheet, PDF, audio
 # parsers and writers. Most shell out to native decoders for the heavy work
 # and write decoded output to disk; both surfaces are role-typical.
+# Scraping and browser-automation libraries. Browser drivers (selenium,
+# playwright) and HTML/JS scrapers (scrapy, requests-html, mechanize).
+# Tight allowlist on purpose; the relaxations here are wide.
+SCRAPING_NAMES: set[str] = {
+    "scrapy", "selenium", "playwright",
+    "splinter", "requests-html",
+    "mechanize", "mechanicalsoup",
+    "pyppeteer", "playwright-stealth",
+    "scrapy-playwright", "scrapy-selenium",
+    "selenium-wire", "undetected-chromedriver",
+    "twisted",  # scrapy's async runtime dependency, hard to use outside this role
+}
+
+
 FORMAT_CODEC_NAMES: set[str] = {
     # Images
     "pillow", "pillow-heif", "pillow-simd",
@@ -620,6 +660,8 @@ def detect_profile_from_name(name: str, ecosystem: str) -> tuple[str, str] | Non
             return PROFILE_OBSERVABILITY, f"name-allowlist: {name}"
         if name in FORMAT_CODEC_NAMES:
             return PROFILE_FORMAT_CODEC, f"name-allowlist: {name}"
+        if name in SCRAPING_NAMES:
+            return PROFILE_SCRAPING, f"name-allowlist: {name}"
         return None
     if ecosystem == "npm":
         if name.startswith("@modelcontextprotocol/server-"):
@@ -679,9 +721,41 @@ def score(findings: list[Finding], weights: dict[SurfaceKind, Weight] | None = N
     weights = weights or weights_for(profile)
     runtime = [f for f in findings if walker.find_context(f.file) == "runtime"]
     deductions = _build_deductions(runtime, weights)
+    _annotate_role_typicality(deductions, weights)
     total_deducted = sum(d["deducted"] for d in deductions)
+    typical_deducted = sum(d["deducted"] for d in deductions if d.get("role_typical"))
+    share = (typical_deducted / total_deducted) if total_deducted else 0.0
     final = max(0, STARTING_SCORE - total_deducted)
-    return ScoreBreakdown(final_score=final, deductions=deductions)
+    return ScoreBreakdown(final_score=final, deductions=deductions, role_typical_share=round(share, 3))
+
+
+def _annotate_role_typicality(deductions: list[dict], weights: dict[SurfaceKind, Weight]) -> None:
+    """Mark each deduction as `role_typical` when the active profile relaxes
+    that surface vs. plugin baseline.
+
+    A surface is "relaxed" by the profile if either its `per_finding` or
+    `cap` is strictly lower than the plugin defaults. This catches the
+    common case (cap drop) and the rare per_finding-only drop. Surfaces
+    not present in PLUGIN_WEIGHTS (e.g. mcp_tool/mcp_resource) default
+    to role-typical when present in the active profile -- the role
+    profile explicitly accepts that surface as load-bearing.
+    """
+    for d in deductions:
+        kind_value = d.get("kind")
+        try:
+            kind = SurfaceKind(kind_value)
+        except ValueError:
+            d["role_typical"] = False
+            continue
+        profile_weight = weights.get(kind)
+        plugin_weight = PLUGIN_WEIGHTS.get(kind)
+        if profile_weight is None or plugin_weight is None:
+            d["role_typical"] = False
+            continue
+        d["role_typical"] = (
+            profile_weight.per_finding < plugin_weight.per_finding
+            or profile_weight.cap < plugin_weight.cap
+        )
 
 
 def _build_deductions(findings: list[Finding], weights: dict[SurfaceKind, Weight]) -> list[dict]:

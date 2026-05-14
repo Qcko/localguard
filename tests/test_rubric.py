@@ -315,6 +315,58 @@ def test_format_codec_profile_stays_strict_on_outbound_xxe_surface():
     assert plugin_od.final_score == fc_od.final_score
 
 
+def test_scraping_profile_relaxes_outbound_dynamic_and_listening_port():
+    findings = _surf(SurfaceKind.OUTBOUND_DYNAMIC, 10) + _surf(SurfaceKind.LISTENING_PORT, 4)
+    plugin = rubric.score(findings, profile=rubric.PROFILE_PLUGIN)
+    sc = rubric.score(findings, profile=rubric.PROFILE_SCRAPING)
+    assert sc.final_score > plugin.final_score
+
+
+def test_scraping_profile_stays_strict_on_env_secret_and_data_exfil():
+    env = _surf(SurfaceKind.ENV_SECRET_READ, 3)
+    exfil = _surf(SurfaceKind.DATA_EXFIL_HINT, 2)
+    plugin_env = rubric.score(env, profile=rubric.PROFILE_PLUGIN)
+    sc_env = rubric.score(env, profile=rubric.PROFILE_SCRAPING)
+    plugin_exfil = rubric.score(exfil, profile=rubric.PROFILE_PLUGIN)
+    sc_exfil = rubric.score(exfil, profile=rubric.PROFILE_SCRAPING)
+    assert plugin_env.final_score == sc_env.final_score
+    assert plugin_exfil.final_score == sc_exfil.final_score
+
+
+def test_role_typicality_marks_relaxed_surfaces():
+    # Under network-library, outbound_network is relaxed (cap 5 vs plugin 25);
+    # subprocess is NOT relaxed.
+    findings = _surf(SurfaceKind.OUTBOUND_NETWORK, 3) + _surf(SurfaceKind.SUBPROCESS, 2)
+    breakdown = rubric.score(findings, profile=rubric.PROFILE_NETWORK_LIBRARY)
+    by_kind = {d["kind"]: d for d in breakdown.deductions}
+    assert by_kind["outbound_network"]["role_typical"] is True
+    assert by_kind["subprocess"]["role_typical"] is False
+
+
+def test_role_typical_share_high_when_only_relaxed_surfaces_fire():
+    findings = _surf(SurfaceKind.OUTBOUND_NETWORK, 10)
+    breakdown = rubric.score(findings, profile=rubric.PROFILE_NETWORK_LIBRARY)
+    assert breakdown.role_typical_share == 1.0
+
+
+def test_role_typical_share_zero_under_plugin_profile():
+    # Plugin is the baseline; no surface is "relaxed vs plugin" by definition.
+    findings = _surf(SurfaceKind.SUBPROCESS, 4)
+    breakdown = rubric.score(findings, profile=rubric.PROFILE_PLUGIN)
+    assert breakdown.role_typical_share == 0.0
+    assert all(d["role_typical"] is False for d in breakdown.deductions)
+
+
+def test_role_typical_share_split_when_mixed_surfaces_fire():
+    # Under cloud-sdk: outbound_network is relaxed (cap 10 vs 25), env_secret_read
+    # stays strict (10/20 unchanged). Mix some of each.
+    findings = _surf(SurfaceKind.OUTBOUND_NETWORK, 10) + _surf(SurfaceKind.ENV_SECRET_READ, 2)
+    breakdown = rubric.score(findings, profile=rubric.PROFILE_CLOUD_SDK)
+    # outbound: cap 10 = 10 pts; env_secret_read: 2 * 10 = 20 pts; total 30
+    # role_typical (outbound): 10/30 = 0.333
+    assert breakdown.role_typical_share == round(10 / 30, 3)
+
+
 def test_unknown_profile_falls_back_to_plugin_weights():
     findings = _surf(SurfaceKind.LISTENING_PORT, 5)
     bogus = rubric.score(findings, profile="not-a-real-profile")

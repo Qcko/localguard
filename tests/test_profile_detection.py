@@ -267,6 +267,18 @@ def test_pillow_lxml_etc_detect_as_format_codec():
     )
 
 
+def test_scrapy_selenium_etc_detect_as_scraping():
+    assert rubric.detect_profile_from_name("scrapy", "pypi") == (
+        rubric.PROFILE_SCRAPING, "name-allowlist: scrapy",
+    )
+    assert rubric.detect_profile_from_name("selenium", "pypi") == (
+        rubric.PROFILE_SCRAPING, "name-allowlist: selenium",
+    )
+    assert rubric.detect_profile_from_name("playwright", "pypi") == (
+        rubric.PROFILE_SCRAPING, "name-allowlist: playwright",
+    )
+
+
 def test_normal_libraries_are_not_detected():
     assert rubric.detect_profile_from_name("lodash", "npm") is None
     assert rubric.detect_profile_from_name("mcp", "pypi") is None  # the SDK itself: library, not server

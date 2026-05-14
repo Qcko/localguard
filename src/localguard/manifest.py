@@ -95,7 +95,7 @@ def iter_library(library_root: Path | None = None, ecosystem: str | None = None)
                 continue
             fallback_name = "/".join(index_path.parent.relative_to(eco_root).parts)
             for entry in index.get("entries", []):
-                profile, profile_reason = _profile_for_entry(index_path.parent, entry)
+                profile, profile_reason, status = _profile_and_status_for_entry(index_path.parent, entry)
                 rows.append({
                     "name": index.get("name") or fallback_name,
                     "ecosystem": eco,
@@ -105,17 +105,23 @@ def iter_library(library_root: Path | None = None, ecosystem: str | None = None)
                     "score": entry.get("score"),
                     "profile": profile,
                     "profile_reason": profile_reason,
+                    "status": status or "accepted",  # legacy entries without status = accepted
                 })
     return rows
 
 
 def _profile_for_entry(name_dir: Path, entry: dict) -> tuple[str | None, str | None]:
+    profile, reason, _ = _profile_and_status_for_entry(name_dir, entry)
+    return profile, reason
+
+
+def _profile_and_status_for_entry(name_dir: Path, entry: dict) -> tuple[str | None, str | None, str | None]:
     version = entry.get("version") or "unversioned"
     target = entry.get("target_hash") or ""
     report = _read_json(name_dir / version / f"{target}.json")
     if not report:
-        return None, None
-    return report.get("profile"), report.get("profile_reason")
+        return None, None, None
+    return report.get("profile"), report.get("profile_reason"), report.get("status")
 
 
 def library_stats(library_root: Path | None = None) -> dict:

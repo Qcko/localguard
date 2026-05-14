@@ -165,6 +165,7 @@ def _add_library(sub: argparse._SubParsersAction) -> None:
     p_list = lib_sub.add_parser("list", help="List every baselined package (newest first).")
     p_list.add_argument("--ecosystem", choices=["pypi", "npm"], default=None)
     p_list.add_argument("--profile", choices=PROFILE_CHOICES, default=None, help="Filter to entries baselined under this profile.")
+    p_list.add_argument("--status", choices=["accepted", "blocked-role-typical", "blocked-suspicious"], default=None, help="Filter to entries with this library status (legacy entries without status are treated as 'accepted').")
     p_list.add_argument("--json", action="store_true")
     p_list.set_defaults(handler=_handle_library_list)
 
@@ -195,6 +196,8 @@ def _handle_library_list(args: argparse.Namespace) -> int:
     rows = manifest.iter_library(ecosystem=args.ecosystem)
     if args.profile:
         rows = [r for r in rows if (r.get("profile") or "plugin") == args.profile]
+    if args.status:
+        rows = [r for r in rows if r.get("status") == args.status]
     rows.sort(key=lambda r: (r.get("audited_at") or ""), reverse=True)
     if args.json:
         _emit_json(rows, pretty=True)
@@ -202,10 +205,11 @@ def _handle_library_list(args: argparse.Namespace) -> int:
     if not rows:
         sys.stdout.write("(library is empty)\n")
         return 0
-    sys.stdout.write(f"{'PACKAGE':<40} {'VERSION':<16} {'ECO':<6} {'PROFILE':<11} {'SCORE':<6} AUDITED\n")
+    sys.stdout.write(f"{'PACKAGE':<40} {'VERSION':<16} {'ECO':<6} {'PROFILE':<11} {'STATUS':<22} {'SCORE':<6} AUDITED\n")
     for r in rows:
         profile = r.get("profile") or "?"
-        sys.stdout.write(f"{r['name']:<40} {str(r.get('version') or '?'):<16} {r['ecosystem']:<6} {profile:<11} {str(r.get('score') or '?'):<6} {r.get('audited_at') or '?'}\n")
+        status = r.get("status") or "accepted"
+        sys.stdout.write(f"{r['name']:<40} {str(r.get('version') or '?'):<16} {r['ecosystem']:<6} {profile:<11} {status:<22} {str(r.get('score') or '?'):<6} {r.get('audited_at') or '?'}\n")
     sys.stdout.write(f"\n{len(rows)} entries\n")
     return 0
 
@@ -397,6 +401,7 @@ def _handle_accept(args: argparse.Namespace) -> int:
         if reply != "accept":
             sys.stdout.write("aborted; no library entry written\n")
             return 1
+    report_dict["status"] = "accepted"
     library_path = manifest.write_library_entry(report_dict)
     sys.stdout.write(f"baselined: {library_path}\n")
     return 0
@@ -429,7 +434,9 @@ def _handle_accept_with_deps(args: argparse.Namespace) -> int:
     for n in pending:
         sep = "@" if n.ecosystem == "npm" else "=="
         report_dict, _spec_back, _root = inspect_mod.inspect(f"{n.name}{sep}{n.version}", ecosystem=n.ecosystem, profile=profile, profile_reason=reason)
-        path = manifest.write_library_entry(report_dict.to_dict())
+        d = report_dict.to_dict()
+        d["status"] = "accepted"
+        path = manifest.write_library_entry(d)
         written.append(str(path))
     sys.stdout.write(f"baselined {len(written)} entries:\n")
     for p in written:
