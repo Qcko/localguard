@@ -110,6 +110,8 @@ def _diff_verdict(report_dict, baseline, spec, score, min_score) -> Verdict:
     novel_high_risk = _novel_high_risk(drift)
     if novel_high_risk:
         reasons.append("novel high-risk surfaces vs. baseline: " + ", ".join(sorted(novel_high_risk)))
+    if drift.get("profile_changed"):
+        reasons.append(f"profile changed: {drift.get('profile_before')} -> {drift.get('profile_after')}")
     status = "safe" if not reasons else "drift"
     return Verdict(status=status, spec_name=spec.name, spec_version=spec.version, ecosystem=spec.ecosystem, score=score, reasons=reasons, drift=drift)
 

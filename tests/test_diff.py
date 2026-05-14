@@ -8,6 +8,24 @@ from localguard.report import SurfaceKind
 FIXTURES = Path(__file__).parent / "fixtures"
 
 
+def test_diff_flags_profile_change_as_drift():
+    baseline = audit.audit_path(FIXTURES / "clean_pkg", profile="plugin").to_dict()
+    candidate = audit.audit_path(FIXTURES / "clean_pkg", profile="mcp-server").to_dict()
+    drift = diff_reports(baseline, candidate)
+    assert drift.profile_changed
+    assert drift.has_drift
+    d = drift.to_dict()
+    assert d["profile_before"] == "plugin"
+    assert d["profile_after"] == "mcp-server"
+
+
+def test_diff_no_profile_change_when_both_plugin():
+    baseline = audit.audit_path(FIXTURES / "clean_pkg", profile="plugin").to_dict()
+    candidate = audit.audit_path(FIXTURES / "clean_pkg", profile="plugin").to_dict()
+    drift = diff_reports(baseline, candidate)
+    assert not drift.profile_changed
+
+
 def test_diff_catches_new_network_subprocess_and_host(tmp_path: Path):
     library = tmp_path / "library"
     baseline = audit.audit_path(FIXTURES / "tampered_v1").to_dict()

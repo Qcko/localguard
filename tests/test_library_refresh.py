@@ -65,6 +65,24 @@ def test_refresh_dry_run_does_not_write(tmp_path, monkeypatch):
     assert after.keys() == before.keys()
 
 
+def test_refresh_preserves_stored_profile(tmp_path, monkeypatch):
+    _patch_roots(monkeypatch, tmp_path)
+    _seed_cache(tmp_path / "cache", FIXTURES / "clean_pkg", "clean-pkg", "0.1.0")
+    # Seed with mcp-server profile explicitly stored.
+    from localguard import audit
+    report = audit.audit_path(FIXTURES / "clean_pkg", profile="mcp-server", profile_reason="manual: --profile mcp-server").to_dict()
+    report["name"] = "clean-pkg"
+    report["version"] = "0.1.0"
+    report["ecosystem"] = "pypi"
+    manifest.write_library_entry(report, library_root=tmp_path / "lib")
+
+    summary = library_refresh.refresh(library_root=tmp_path / "lib")
+    assert summary.refreshed == 1
+    refreshed = manifest.find_library_entry("clean-pkg", "pypi", version="0.1.0", library_root=tmp_path / "lib")
+    assert refreshed["profile"] == "mcp-server"
+    assert refreshed["profile_reason"] == "manual: --profile mcp-server"
+
+
 def test_refresh_filters_by_ecosystem_and_name(tmp_path, monkeypatch):
     _patch_roots(monkeypatch, tmp_path)
     _seed_cache(tmp_path / "cache", FIXTURES / "clean_pkg", "clean-pkg", "0.1.0")

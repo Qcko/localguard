@@ -60,8 +60,11 @@ def _refresh_one(row: dict, *, dry_run: bool, library_root: Path) -> RefreshOutc
     old_score = row.get("score")
     sep = "@" if eco == "npm" else "=="
     spec = f"{name}{sep}{version}" if version else name
+    stored = manifest.find_library_entry(name, eco, version=version, library_root=library_root) or {}
+    stored_profile = stored.get("profile")
+    stored_reason = stored.get("profile_reason")
     try:
-        report, _spec, _root = inspect_mod.inspect(spec, ecosystem=eco)
+        report, _spec, _root = inspect_mod.inspect(spec, ecosystem=eco, profile=stored_profile, profile_reason=stored_reason)
     except Exception as exc:
         return RefreshOutcome(name=name, version=version, ecosystem=eco, status="error", old_score=old_score, error=str(exc))
     new_dict = report.to_dict()

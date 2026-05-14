@@ -28,18 +28,27 @@ SIGNATURE_KEYS: dict[str, str] = {
 class DriftReport:
     score_before: int | None = None
     score_after: int | None = None
+    profile_before: str | None = None
+    profile_after: str | None = None
     new_findings: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
     removed_findings: dict[str, list[dict[str, Any]]] = field(default_factory=dict)
 
     @property
+    def profile_changed(self) -> bool:
+        return (self.profile_before or "plugin") != (self.profile_after or "plugin")
+
+    @property
     def has_drift(self) -> bool:
-        return any(self.new_findings.values())
+        return any(self.new_findings.values()) or self.profile_changed
 
     def to_dict(self) -> dict[str, Any]:
         return {
             "score_before": self.score_before,
             "score_after": self.score_after,
             "score_delta": _score_delta(self.score_before, self.score_after),
+            "profile_before": self.profile_before,
+            "profile_after": self.profile_after,
+            "profile_changed": self.profile_changed,
             "has_drift": self.has_drift,
             "new_findings": self.new_findings,
             "removed_findings": self.removed_findings,
@@ -52,6 +61,8 @@ def diff_reports(baseline: dict[str, Any], candidate: dict[str, Any]) -> DriftRe
     drift = DriftReport(
         score_before=_score_of(baseline),
         score_after=_score_of(candidate),
+        profile_before=baseline.get("profile"),
+        profile_after=candidate.get("profile"),
     )
     drift.new_findings = _bucket_difference(candidate_sigs, baseline_sigs)
     drift.removed_findings = _bucket_difference(baseline_sigs, candidate_sigs)
