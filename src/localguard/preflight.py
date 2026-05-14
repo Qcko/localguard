@@ -21,6 +21,17 @@ HIGH_RISK_KINDS = {
     "telemetry_endpoint",
 }
 
+# Surfaces where a single finding overrides role-typicality entirely. If any
+# of these fire, the blocked entry is suspicious regardless of how much of
+# the rest of the deduction is "role-typical."
+CRITICAL_STRICT_KINDS = {
+    "data_exfil_hint",
+    "mcp_transport_drift",
+    "prompt_injection_hint",
+}
+
+ROLE_TYPICAL_THRESHOLD = 0.8
+
 
 @dataclass
 class Verdict:
@@ -31,6 +42,8 @@ class Verdict:
     score: int
     reasons: list[str] = field(default_factory=list)
     drift: dict[str, Any] | None = None
+    library_status: str | None = None
+    role_typical_share: float = 0.0
 
     @property
     def safe(self) -> bool:
@@ -44,6 +57,8 @@ class Verdict:
             "score": self.score,
             "reasons": self.reasons,
             "drift": self.drift,
+            "library_status": self.library_status,
+            "role_typical_share": self.role_typical_share,
         }
 
     def human_summary(self) -> str:
@@ -86,20 +101,51 @@ def verdict_for_report(report_dict: dict, spec: fetch.PackageSpec, *, min_score:
 def _first_encounter_verdict(report_dict, spec, score, min_score, accept_new, auto_accept_score, library_root) -> Verdict:
     reasons: list[str] = ["no prior baseline in library"]
     if score < min_score:
+        # Auto-write a blocked entry classified by role-typicality so the next
+        # encounter has prior review context. latest_known_good filters these
+        # out so they cannot establish a trust baseline -- they're a journal
+        # of "we saw this and declined," not "we accepted it."
+        blocked_status = _classify_blocked_status(report_dict)
+        stamped = dict(report_dict)
+        stamped["status"] = blocked_status
+        manifest.write_library_entry(stamped, library_root=library_root)
+        role_share = (report_dict.get("score") or {}).get("role_typical_share", 0.0)
         reasons.append(f"score {score} below threshold {min_score}")
-        return Verdict(status="low-score", spec_name=spec.name, spec_version=spec.version, ecosystem=spec.ecosystem, score=score, reasons=reasons)
+        reasons.append(f"library-status: {blocked_status} (role_typical_share={role_share:.2f})")
+        return Verdict(status="low-score", spec_name=spec.name, spec_version=spec.version, ecosystem=spec.ecosystem, score=score, reasons=reasons, library_status=blocked_status, role_typical_share=role_share)
     auto = accept_new or score >= auto_accept_score
     if not auto:
         sep = "@" if spec.ecosystem == "npm" else "=="
         spec_str = f"{spec.name}{sep}{spec.version}" if spec.version else spec.name
         reasons.append(f"first encounter -- review and run `localguard accept {spec_str}` to baseline it")
         return Verdict(status="first-encounter-needs-accept", spec_name=spec.name, spec_version=spec.version, ecosystem=spec.ecosystem, score=score, reasons=reasons)
-    manifest.write_library_entry(report_dict, library_root=library_root)
+    stamped = dict(report_dict)
+    stamped["status"] = "accepted"
+    manifest.write_library_entry(stamped, library_root=library_root)
     if accept_new:
         reasons.append("pinned into library as new baseline")
     else:
         reasons.append(f"auto-baselined (score {score} >= {auto_accept_score})")
     return Verdict(status="first-encounter-accepted", spec_name=spec.name, spec_version=spec.version, ecosystem=spec.ecosystem, score=score, reasons=reasons)
+
+
+def _classify_blocked_status(report_dict: dict) -> str:
+    """Return `blocked-role-typical` or `blocked-suspicious` for a low-score report.
+
+    A single critical-strict finding (data_exfil_hint, mcp_transport_drift,
+    prompt_injection_hint) overrides role-typicality entirely -- these are
+    "package is dangerous regardless of role" signals. Otherwise a
+    role-typical share at or above the threshold is enough.
+    """
+    score_data = report_dict.get("score") or {}
+    deductions = score_data.get("deductions") or []
+    for d in deductions:
+        if d.get("kind") in CRITICAL_STRICT_KINDS:
+            return "blocked-suspicious"
+    role_share = score_data.get("role_typical_share", 0.0)
+    if role_share >= ROLE_TYPICAL_THRESHOLD:
+        return "blocked-role-typical"
+    return "blocked-suspicious"
 
 
 def _diff_verdict(report_dict, baseline, spec, score, min_score) -> Verdict:

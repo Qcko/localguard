@@ -62,6 +62,49 @@ def test_preflight_blocks_low_score_first_encounter(tmp_path: Path):
 
     assert not verdict.safe
     assert verdict.status == "low-score"
+    # The blocked entry was auto-written with a library_status of either
+    # blocked-role-typical or blocked-suspicious; both are valid -- the
+    # exact split depends on the fixture's deductions. Either way the
+    # entry must NOT establish a baseline.
+    assert verdict.library_status in {"blocked-role-typical", "blocked-suspicious"}
+
+
+def test_preflight_writes_blocked_entry_but_does_not_baseline(tmp_path: Path):
+    """The auto-written blocked entry is recorded in the library so the next
+    encounter has prior review context, but it must NOT count as a baseline
+    that the diff path would accept silently."""
+    cache_root = tmp_path / "cache"
+    library_root = tmp_path / "lib"
+    _seed_cache(cache_root, FIXTURES / "tampered_v2", "drifty-pkg", "0.2.0")
+
+    preflight.preflight("drifty-pkg==0.2.0", cache_root=cache_root, library_root=library_root, accept_new=True, min_score=80)
+
+    # Auto-written blocked entry exists in the library...
+    rows = manifest.iter_library(library_root=library_root)
+    assert any(r.get("name") == "drifty-pkg" and r.get("status", "").startswith("blocked-") for r in rows)
+    # ...but is NOT considered a baseline (blocked entries cannot establish trust)
+    assert manifest.latest_known_good("drifty-pkg", "pypi", library_root=library_root) is None
+
+
+def test_latest_known_good_skips_blocked_entries(tmp_path: Path):
+    """When the library has both blocked and accepted entries for a package,
+    latest_known_good returns the most recent ACCEPTED one."""
+    library_root = tmp_path / "lib"
+    blocked = audit.audit_path(FIXTURES / "tampered_v2").to_dict()
+    blocked["name"] = "drifty-pkg"
+    blocked["version"] = "0.2.0"
+    blocked["status"] = "blocked-suspicious"
+    manifest.write_library_entry(blocked, library_root=library_root)
+    accepted = audit.audit_path(FIXTURES / "tampered_v1").to_dict()
+    accepted["name"] = "drifty-pkg"
+    accepted["version"] = "0.1.0"
+    accepted["status"] = "accepted"
+    manifest.write_library_entry(accepted, library_root=library_root)
+
+    baseline = manifest.latest_known_good("drifty-pkg", "pypi", library_root=library_root)
+    assert baseline is not None
+    assert baseline.get("version") == "0.1.0"
+    assert baseline.get("status") == "accepted"
 
 
 def test_preflight_detects_drift_against_baseline(tmp_path: Path):

@@ -56,17 +56,29 @@ def write_library_entry(report: dict[str, Any], library_root: Path | None = None
 
 
 def latest_known_good(name: str, ecosystem: str, library_root: Path | None = None) -> dict | None:
+    """Most recent ACCEPTED baseline for this package. Blocked entries
+    (status: blocked-role-typical / blocked-suspicious) are deliberately
+    skipped -- they record that we saw the package but did NOT accept
+    it, so they must not establish a trust baseline that future installs
+    diff against.
+    """
     library_root = library_root or DEFAULT_LIBRARY_ROOT
     index_path = library_root / ecosystem / name / "_index.json"
     data = _read_json(index_path)
     if not data:
         return None
     entries = data.get("entries", [])
-    if not entries:
-        return None
-    latest_meta = entries[-1]
-    report_path = library_root / ecosystem / name / latest_meta["version"] / f"{latest_meta['target_hash']}.json"
-    return _read_json(report_path)
+    # Walk entries newest-first; return the first accepted one.
+    for meta in reversed(entries):
+        report_path = library_root / ecosystem / name / meta["version"] / f"{meta['target_hash']}.json"
+        report = _read_json(report_path)
+        if not report:
+            continue
+        # Legacy entries without status are treated as accepted (backward-compat).
+        status = report.get("status") or "accepted"
+        if status == "accepted":
+            return report
+    return None
 
 
 def library_lookup(target_hash: str, name: str | None, ecosystem: str, library_root: Path | None = None) -> dict | None:

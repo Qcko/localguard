@@ -168,6 +168,11 @@ def test_hook_blocks_low_score_install(tmp_path, monkeypatch):
     assert code == 2
     assert "BLOCK" in err
     assert "drifty-pkg" in err
+    # New: block message surfaces the library-status decision and the
+    # role-typical share, plus an actionable `localguard accept` hint.
+    assert ("blocked-role-typical" in err) or ("blocked-suspicious" in err)
+    assert "role_typical_share=" in err
+    assert "localguard accept" in err
 
 
 def test_hook_blocks_via_unknown_transitive_dep(tmp_path, monkeypatch):

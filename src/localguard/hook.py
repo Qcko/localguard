@@ -53,6 +53,9 @@ def run_hook(stdin_text: str, stderr=sys.stderr, stdout=sys.stdout) -> int:
             if node.blocked:
                 stderr.write(f"[localguard] BLOCK {spec} ({install.ecosystem}) status={status}\n")
                 stderr.write(deps_mod.render_tree(node) + "\n")
+                role_typicality_line = _role_typicality_summary(node)
+                if role_typicality_line:
+                    stderr.write(role_typicality_line + "\n")
                 if _has_only_first_encounter_blockers(node):
                     stderr.write(f"  -> run `localguard accept --with-deps {spec}` to baseline this closure\n")
                 blockers.append(f"{spec} ({install.ecosystem}): {status}")
@@ -62,6 +65,44 @@ def run_hook(stdin_text: str, stderr=sys.stderr, stdout=sys.stdout) -> int:
         stderr.write("[localguard] blocked install: " + "; ".join(blockers) + "\n")
         return 2
     return 0
+
+
+def _role_typicality_summary(node) -> str:
+    """One-line breakdown of role-typicality for low-score blocked nodes.
+
+    Helps the user decide whether to force-accept: a high share with a
+    blocked-role-typical library status means the findings match the
+    package's documented role and force-acceptance is likely safe after
+    a quick look at any role-atypical findings. A low share or a
+    blocked-suspicious status means the deductions land on strict
+    surfaces and warrant real review.
+    """
+    fragments: list[str] = []
+    for n in _walk_tree(node):
+        v = n.verdict
+        if not v or v.status != "low-score":
+            continue
+        if v.library_status is None:
+            continue
+        spec = f"{n.name}=={n.version or '?'}"
+        if v.library_status == "blocked-role-typical":
+            advice = (
+                f"most deductions are surfaces this role inherently uses -- "
+                f"`localguard accept {spec}` is likely safe after a quick read of "
+                f"the strict-surface findings"
+            )
+        else:
+            advice = (
+                f"role-atypical deductions dominate -- read the report carefully "
+                f"before considering `localguard accept {spec}`"
+            )
+        fragments.append(
+            f"  -> {spec}: {v.library_status} "
+            f"(role_typical_share={v.role_typical_share:.0%}); "
+            f"`localguard inspect {spec} --pretty` to review. "
+            f"{advice}."
+        )
+    return "\n".join(fragments)
 
 
 def _has_only_first_encounter_blockers(node) -> bool:
