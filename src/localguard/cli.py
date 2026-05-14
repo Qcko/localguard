@@ -5,7 +5,14 @@ import json
 import sys
 from pathlib import Path
 
-from . import audit, cache as cache_mod, deps as deps_mod, diff, doctor as doctor_mod, egress as egress_mod, fetch, hook, init_hook as init_hook_mod, inspect as inspect_mod, library_refresh as library_refresh_mod, manifest, preflight as preflight_mod
+from . import audit, cache as cache_mod, deps as deps_mod, diff, doctor as doctor_mod, egress as egress_mod, fetch, hook, init_hook as init_hook_mod, inspect as inspect_mod, library_refresh as library_refresh_mod, manifest, preflight as preflight_mod, rubric
+
+
+PROFILE_CHOICES = list(rubric.PROFILE_WEIGHTS.keys())
+
+
+def _add_profile_arg(p: argparse.ArgumentParser) -> None:
+    p.add_argument("--profile", choices=PROFILE_CHOICES, default=None, help="Scoring profile (default: plugin).")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -281,11 +288,13 @@ def _add_tree(sub: argparse._SubParsersAction) -> None:
     p.add_argument("spec")
     p.add_argument("--ecosystem", choices=["pypi", "npm"], default=None)
     p.add_argument("--max-depth", type=int, default=deps_mod.DEFAULT_MAX_DEPTH)
+    _add_profile_arg(p)
     p.set_defaults(handler=_handle_tree)
 
 
 def _handle_tree(args: argparse.Namespace) -> int:
-    node = deps_mod.audit_tree(args.spec, ecosystem=args.ecosystem, max_depth=args.max_depth)
+    profile, reason = _resolve_profile(args)
+    node = deps_mod.audit_tree(args.spec, ecosystem=args.ecosystem, max_depth=args.max_depth, profile=profile, profile_reason=reason)
     sys.stdout.write(deps_mod.render_tree(node) + "\n")
     return 1 if node.blocked else 0
 
@@ -310,6 +319,7 @@ def _add_audit(sub: argparse._SubParsersAction) -> None:
     p = sub.add_parser("audit", help="Audit a directory and print a JSON report.")
     p.add_argument("path", type=Path)
     p.add_argument("--pretty", action="store_true")
+    _add_profile_arg(p)
     p.set_defaults(handler=_handle_audit)
 
 
@@ -334,6 +344,7 @@ def _add_inspect(sub: argparse._SubParsersAction) -> None:
     p.add_argument("spec", help="Package spec, e.g. 'requests==2.31.0' or '@modelcontextprotocol/server-filesystem@0.6.0'")
     p.add_argument("--ecosystem", choices=["pypi", "npm"], default=None)
     p.add_argument("--pretty", action="store_true")
+    _add_profile_arg(p)
     p.set_defaults(handler=_handle_inspect)
 
 
@@ -344,6 +355,7 @@ def _add_preflight(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--min-score", type=int, default=preflight_mod.DEFAULT_MIN_SCORE)
     p.add_argument("--accept-new", action="store_true", help="Auto-pin a first-time-seen package if it meets the score threshold.")
     p.add_argument("--json", action="store_true")
+    _add_profile_arg(p)
     p.set_defaults(handler=_handle_preflight)
 
 
@@ -354,13 +366,15 @@ def _add_accept(sub: argparse._SubParsersAction) -> None:
     p.add_argument("--yes", action="store_true", help="Skip the confirmation prompt.")
     p.add_argument("--with-deps", action="store_true", help="Recursively audit the dep closure and baseline every acceptable node.")
     p.add_argument("--max-depth", type=int, default=deps_mod.DEFAULT_MAX_DEPTH)
+    _add_profile_arg(p)
     p.set_defaults(handler=_handle_accept)
 
 
 def _handle_accept(args: argparse.Namespace) -> int:
     if args.with_deps:
         return _handle_accept_with_deps(args)
-    report, spec, _ = inspect_mod.inspect(args.spec, ecosystem=args.ecosystem)
+    profile, reason = _resolve_profile(args)
+    report, spec, _ = inspect_mod.inspect(args.spec, ecosystem=args.ecosystem, profile=profile, profile_reason=reason)
     report_dict = report.to_dict()
     score = (report_dict.get("score") or {}).get("final_score")
     sys.stdout.write(f"package: {spec.name}=={spec.version or '(unversioned)'} ({spec.ecosystem})\n")
@@ -379,7 +393,8 @@ def _handle_accept(args: argparse.Namespace) -> int:
 
 
 def _handle_accept_with_deps(args: argparse.Namespace) -> int:
-    node = deps_mod.audit_tree(args.spec, ecosystem=args.ecosystem, max_depth=args.max_depth)
+    profile, reason = _resolve_profile(args)
+    node = deps_mod.audit_tree(args.spec, ecosystem=args.ecosystem, max_depth=args.max_depth, profile=profile, profile_reason=reason)
     sys.stdout.write(deps_mod.render_tree(node) + "\n")
     pending, hard_blockers = _classify_tree_for_accept(node)
     if hard_blockers:
@@ -403,7 +418,7 @@ def _handle_accept_with_deps(args: argparse.Namespace) -> int:
     written: list[str] = []
     for n in pending:
         sep = "@" if n.ecosystem == "npm" else "=="
-        report_dict, _spec_back, _root = inspect_mod.inspect(f"{n.name}{sep}{n.version}", ecosystem=n.ecosystem)
+        report_dict, _spec_back, _root = inspect_mod.inspect(f"{n.name}{sep}{n.version}", ecosystem=n.ecosystem, profile=profile, profile_reason=reason)
         path = manifest.write_library_entry(report_dict.to_dict())
         written.append(str(path))
     sys.stdout.write(f"baselined {len(written)} entries:\n")
@@ -484,11 +499,14 @@ def _handle_hook_bash(args: argparse.Namespace) -> int:
 
 
 def _handle_preflight(args: argparse.Namespace) -> int:
+    profile, reason = _resolve_profile(args)
     verdict = preflight_mod.preflight(
         args.spec,
         ecosystem=args.ecosystem,
         min_score=args.min_score,
         accept_new=args.accept_new,
+        profile=profile,
+        profile_reason=reason,
     )
     if args.json:
         _emit_json(verdict.to_dict(), pretty=True)
@@ -498,7 +516,8 @@ def _handle_preflight(args: argparse.Namespace) -> int:
 
 
 def _handle_inspect(args: argparse.Namespace) -> int:
-    report, spec, root = inspect_mod.inspect(args.spec, ecosystem=args.ecosystem)
+    profile, reason = _resolve_profile(args)
+    report, spec, root = inspect_mod.inspect(args.spec, ecosystem=args.ecosystem, profile=profile, profile_reason=reason)
     payload = report.to_dict()
     payload["spec"] = {"name": spec.name, "version": spec.version, "ecosystem": spec.ecosystem}
     payload["audit_root"] = str(root)
@@ -507,9 +526,17 @@ def _handle_inspect(args: argparse.Namespace) -> int:
 
 
 def _handle_audit(args: argparse.Namespace) -> int:
-    report = audit.audit_path(args.path)
+    profile, reason = _resolve_profile(args)
+    report = audit.audit_path(args.path, profile=profile, profile_reason=reason)
     _emit_json(report.to_dict(), pretty=args.pretty)
     return 0
+
+
+def _resolve_profile(args: argparse.Namespace) -> tuple[str, str | None]:
+    explicit = getattr(args, "profile", None)
+    if explicit:
+        return explicit, f"manual: --profile {explicit}"
+    return rubric.DEFAULT_PROFILE, None
 
 
 def _handle_pin(args: argparse.Namespace) -> int:

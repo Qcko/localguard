@@ -48,7 +48,7 @@ class TreeNode:
         return self.composed_status not in {"safe", "first-encounter-accepted"}
 
 
-def audit_tree(raw_spec: str, ecosystem: str | None = None, *, max_depth: int = DEFAULT_MAX_DEPTH, cache_root: Path | None = None, library_root: Path | None = None, visited: set[tuple[str, str, str]] | None = None, specifier: str | None = None, _depth: int = 0) -> TreeNode:
+def audit_tree(raw_spec: str, ecosystem: str | None = None, *, max_depth: int = DEFAULT_MAX_DEPTH, cache_root: Path | None = None, library_root: Path | None = None, visited: set[tuple[str, str, str]] | None = None, specifier: str | None = None, profile: str | None = None, profile_reason: str | None = None, _depth: int = 0) -> TreeNode:
     visited = visited if visited is not None else set()
     cache_root = cache_root or fetch.DEFAULT_CACHE_ROOT
     spec = _resolve_spec_with_version(raw_spec, ecosystem, specifier=specifier)
@@ -59,7 +59,7 @@ def audit_tree(raw_spec: str, ecosystem: str | None = None, *, max_depth: int = 
         return TreeNode(name=spec.name, version=spec.version, ecosystem=spec.ecosystem, cycle=True)
     visited.add(key)
     try:
-        report, _spec_back, audit_root = inspect_mod.inspect(_format_spec(spec), ecosystem=spec.ecosystem, cache_root=cache_root)
+        report, _spec_back, audit_root = inspect_mod.inspect(_format_spec(spec), ecosystem=spec.ecosystem, cache_root=cache_root, profile=profile, profile_reason=profile_reason)
     except Exception as exc:
         return TreeNode(name=spec.name, version=spec.version, ecosystem=spec.ecosystem, error=str(exc))
     verdict = preflight_mod.verdict_for_report(report.to_dict(), spec, library_root=library_root)
@@ -68,7 +68,7 @@ def audit_tree(raw_spec: str, ecosystem: str | None = None, *, max_depth: int = 
         node.truncated = True
         return node
     for dep in extract_deps(audit_root, spec.ecosystem):
-        child = audit_tree(dep.name, ecosystem=spec.ecosystem, max_depth=max_depth, cache_root=cache_root, library_root=library_root, visited=visited, specifier=dep.specifier, _depth=_depth + 1)
+        child = audit_tree(dep.name, ecosystem=spec.ecosystem, max_depth=max_depth, cache_root=cache_root, library_root=library_root, visited=visited, specifier=dep.specifier, profile=profile, profile_reason=profile_reason, _depth=_depth + 1)
         node.children.append(child)
     return node
 

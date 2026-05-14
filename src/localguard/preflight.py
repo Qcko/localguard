@@ -64,9 +64,11 @@ def preflight(
     auto_accept_score: int = DEFAULT_AUTO_ACCEPT_SCORE,
     cache_root: Path | None = None,
     library_root: Path | None = None,
+    profile: str | None = None,
+    profile_reason: str | None = None,
 ) -> Verdict:
     cache_root = cache_root or fetch.DEFAULT_CACHE_ROOT
-    report, spec, _ = inspect.inspect(raw_spec, ecosystem=ecosystem, cache_root=cache_root)
+    report, spec, _ = inspect.inspect(raw_spec, ecosystem=ecosystem, cache_root=cache_root, profile=profile, profile_reason=profile_reason)
     return verdict_for_report(report.to_dict(), spec, min_score=min_score, accept_new=accept_new, auto_accept_score=auto_accept_score, library_root=library_root)
 
 

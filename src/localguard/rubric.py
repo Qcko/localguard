@@ -90,7 +90,7 @@ def _build_deductions(counts: dict[SurfaceKind, int], weights: dict[SurfaceKind,
     deductions = []
     for kind, count in counts.items():
         weight = weights.get(kind)
-        if not weight:
+        if not weight or weight.cap == 0:
             continue
         raw = weight.per_finding * count
         deducted = min(raw, weight.cap)
