@@ -290,6 +290,31 @@ def test_observability_profile_stays_strict_on_subprocess_and_env_secret():
     assert plugin_env.final_score == obs_env.final_score
 
 
+def test_format_codec_profile_relaxes_subprocess_and_fs_write():
+    sp = _surf(SurfaceKind.SUBPROCESS, 5)
+    fw = _surf(SurfaceKind.FS_WRITE, 5)
+    plugin_sp = rubric.score(sp, profile=rubric.PROFILE_PLUGIN)
+    fc_sp = rubric.score(sp, profile=rubric.PROFILE_FORMAT_CODEC)
+    plugin_fw = rubric.score(fw, profile=rubric.PROFILE_PLUGIN)
+    fc_fw = rubric.score(fw, profile=rubric.PROFILE_FORMAT_CODEC)
+    assert fc_sp.final_score > plugin_sp.final_score
+    assert fc_fw.final_score > plugin_fw.final_score
+
+
+def test_format_codec_profile_stays_strict_on_outbound_xxe_surface():
+    # XML / HTML parsers fetching external entities is THE XXE attack
+    # surface; format-codec must NOT relax outbound_network or
+    # outbound_dynamic.
+    on = _surf(SurfaceKind.OUTBOUND_NETWORK, 6)
+    od = _surf(SurfaceKind.OUTBOUND_DYNAMIC, 5)
+    plugin_on = rubric.score(on, profile=rubric.PROFILE_PLUGIN)
+    fc_on = rubric.score(on, profile=rubric.PROFILE_FORMAT_CODEC)
+    plugin_od = rubric.score(od, profile=rubric.PROFILE_PLUGIN)
+    fc_od = rubric.score(od, profile=rubric.PROFILE_FORMAT_CODEC)
+    assert plugin_on.final_score == fc_on.final_score
+    assert plugin_od.final_score == fc_od.final_score
+
+
 def test_unknown_profile_falls_back_to_plugin_weights():
     findings = _surf(SurfaceKind.LISTENING_PORT, 5)
     bogus = rubric.score(findings, profile="not-a-real-profile")

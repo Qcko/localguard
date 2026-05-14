@@ -70,6 +70,29 @@ CLI_FRAMEWORK_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
 }
 
+# A format / codec library's purpose is parsing or emitting file formats
+# (images, XML/HTML, spreadsheets, PDFs, audio) -- they shell out to native
+# decoders (libjpeg, libxml2, pandoc, ffmpeg), write tempfiles and decoded
+# output to disk. Relax subprocess and fs_write. KEEP STRICT OUTBOUND
+# (XML/HTML parsers fetching external entities is the XXE attack surface --
+# lxml's outbound findings are legitimately suspicious and the right answer
+# is manual review or `defusedxml`). Keep strict env_secret_read and the
+# strict-by-design surfaces.
+FORMAT_CODEC_WEIGHTS: dict[SurfaceKind, Weight] = {
+    SurfaceKind.OUTBOUND_NETWORK: Weight(5, 25),
+    SurfaceKind.OUTBOUND_DYNAMIC: Weight(10, 40),
+    SurfaceKind.LISTENING_PORT: Weight(15, 45),
+    SurfaceKind.SUBPROCESS: Weight(5, 20),
+    SurfaceKind.FS_WRITE: Weight(2, 10),
+    SurfaceKind.ENV_SECRET_READ: Weight(10, 20),
+    SurfaceKind.HARDCODED_HOST: Weight(1, 5),
+    SurfaceKind.TELEMETRY_ENDPOINT: Weight(10, 20),
+    SurfaceKind.OBFUSCATION: Weight(8, 60),
+    SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
+    SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
+    SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+}
+
 # A template engine's whole job is to compile() user-supplied template
 # strings into Python bytecode. Obfuscation findings will be high by
 # construction. Lower the obfuscation cap (30 vs plugin's 60) so a
@@ -313,6 +336,7 @@ PROFILE_TEMPLATE_ENGINE = "template-engine"
 PROFILE_TEST_FRAMEWORK = "test-framework"
 PROFILE_CLOUD_SDK = "cloud-sdk"
 PROFILE_OBSERVABILITY = "observability"
+PROFILE_FORMAT_CODEC = "format-codec"
 DEFAULT_PROFILE = PROFILE_PLUGIN
 
 PROFILE_WEIGHTS: dict[str, dict[SurfaceKind, Weight]] = {
@@ -329,6 +353,7 @@ PROFILE_WEIGHTS: dict[str, dict[SurfaceKind, Weight]] = {
     PROFILE_TEST_FRAMEWORK: TEST_FRAMEWORK_WEIGHTS,
     PROFILE_CLOUD_SDK: CLOUD_SDK_WEIGHTS,
     PROFILE_OBSERVABILITY: OBSERVABILITY_WEIGHTS,
+    PROFILE_FORMAT_CODEC: FORMAT_CODEC_WEIGHTS,
 }
 
 # Backwards-compat alias for any external caller.
@@ -416,6 +441,30 @@ WEB_SERVER_NAMES: set[str] = {
 # Well-known Python template engines. Tight allowlist; their entire job
 # is compile() of template ASTs. Excludes Django/Tornado/Flask -- those
 # are web frameworks where templating is one subsystem.
+# File-format / codec libraries -- image, XML/HTML, spreadsheet, PDF, audio
+# parsers and writers. Most shell out to native decoders for the heavy work
+# and write decoded output to disk; both surfaces are role-typical.
+FORMAT_CODEC_NAMES: set[str] = {
+    # Images
+    "pillow", "pillow-heif", "pillow-simd",
+    "imageio", "imageio-ffmpeg",
+    # XML / HTML
+    "lxml", "defusedxml", "beautifulsoup4", "html5lib",
+    # Spreadsheets
+    "openpyxl", "xlrd", "xlwt", "xlsxwriter",
+    # Office documents
+    "python-docx", "python-pptx",
+    # PDF
+    "pypdf", "pypdf2", "pikepdf", "pdfplumber", "reportlab",
+    # Audio / video
+    "pydub", "ffmpeg-python", "av", "moviepy",
+    # Markdown / lightweight markup
+    "markdown", "markdown-it-py", "mistune",
+    # Encoding detection + magic
+    "chardet", "charset-normalizer", "python-magic", "filetype",
+}
+
+
 TEMPLATE_ENGINE_NAMES: set[str] = {
     "jinja2", "mako", "chevron", "genshi", "cheetah3",
     "pystache", "wheezy.template",
@@ -569,6 +618,8 @@ def detect_profile_from_name(name: str, ecosystem: str) -> tuple[str, str] | Non
             return PROFILE_CLOUD_SDK, f"name-allowlist: {name}"
         if name in OBSERVABILITY_NAMES:
             return PROFILE_OBSERVABILITY, f"name-allowlist: {name}"
+        if name in FORMAT_CODEC_NAMES:
+            return PROFILE_FORMAT_CODEC, f"name-allowlist: {name}"
         return None
     if ecosystem == "npm":
         if name.startswith("@modelcontextprotocol/server-"):

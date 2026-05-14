@@ -249,6 +249,24 @@ def test_sentry_otel_etc_detect_as_observability():
     )
 
 
+def test_pillow_lxml_etc_detect_as_format_codec():
+    assert rubric.detect_profile_from_name("pillow", "pypi") == (
+        rubric.PROFILE_FORMAT_CODEC, "name-allowlist: pillow",
+    )
+    assert rubric.detect_profile_from_name("lxml", "pypi") == (
+        rubric.PROFILE_FORMAT_CODEC, "name-allowlist: lxml",
+    )
+    assert rubric.detect_profile_from_name("openpyxl", "pypi") == (
+        rubric.PROFILE_FORMAT_CODEC, "name-allowlist: openpyxl",
+    )
+    assert rubric.detect_profile_from_name("pypdf", "pypi") == (
+        rubric.PROFILE_FORMAT_CODEC, "name-allowlist: pypdf",
+    )
+    assert rubric.detect_profile_from_name("markdown", "pypi") == (
+        rubric.PROFILE_FORMAT_CODEC, "name-allowlist: markdown",
+    )
+
+
 def test_normal_libraries_are_not_detected():
     assert rubric.detect_profile_from_name("lodash", "npm") is None
     assert rubric.detect_profile_from_name("mcp", "pypi") is None  # the SDK itself: library, not server
