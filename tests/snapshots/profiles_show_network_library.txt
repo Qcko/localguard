@@ -1,0 +1,15 @@
+# profile: network-library
+
+SURFACE                PER_FINDING  CAP    DELTA VS PLUGIN
+data_exfil_hint        20           40     (same as plugin)
+env_secret_read        10           20     (same as plugin)
+fs_write               5            15     (same as plugin)
+hardcoded_host         1            5      per_finding -1, cap -5
+listening_port         15           45     (same as plugin)
+mcp_transport_drift    30           30     (same as plugin)
+obfuscation            8            60     (same as plugin)
+outbound_dynamic       2            10     per_finding -8, cap -30
+outbound_network       1            5      per_finding -4, cap -20
+prompt_injection_hint  15           30     (same as plugin)
+subprocess             15           40     (same as plugin)
+telemetry_endpoint     10           20     (same as plugin)

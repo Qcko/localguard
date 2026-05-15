@@ -878,7 +878,7 @@ FORMAT_CODEC_NAMES: set[str] = {
 
 TEMPLATE_ENGINE_NAMES: set[str] = {
     "jinja2", "mako", "chevron", "genshi", "cheetah3",
-    "pystache", "wheezy.template",
+    "pystache", "wheezy-template",
 }
 
 # Test frameworks and the test-tool ecosystem. Excludes mock/responses
@@ -899,7 +899,9 @@ CLOUD_SDK_NAMES: set[str] = {
     # AWS
     "boto3", "botocore", "s3transfer", "awscli", "aiobotocore",
     # GCP
-    "google-cloud-storage", "google-cloud-core", "google-cloud-bigquery",
+    # google-cloud-bigquery lives in DATABASE_DRIVER_NAMES (BQ-as-DB shape;
+    # detection order resolves it there).
+    "google-cloud-storage", "google-cloud-core",
     "google-cloud-pubsub", "google-cloud-firestore",
     "google-cloud-secret-manager", "google-auth",
     "google-api-python-client", "google-api-core",
@@ -1184,9 +1186,8 @@ TEST_FRAMEWORK_NPM_NAMES: set[str] = {
 CLOUD_SDK_NPM_NAMES: set[str] = {
     "aws-sdk",  # legacy v2 bundle
     "@azure/core-rest-pipeline",
-    "@google-cloud/storage", "@google-cloud/firestore",
-    "@google-cloud/pubsub", "@google-cloud/bigquery",
-    "@google-cloud/secret-manager", "google-auth-library",
+    # @google-cloud/* are covered by CLOUD_SDK_NPM_PREFIXES below.
+    "google-auth-library",
     "kubernetes-client", "@kubernetes/client-node",
 }
 CLOUD_SDK_NPM_PREFIXES: tuple[str, ...] = (
@@ -1257,7 +1258,7 @@ WORKFLOW_ORCHESTRATOR_NPM_PREFIXES: tuple[str, ...] = (
 
 DOC_BUILDER_NPM_NAMES: set[str] = {
     "typedoc", "jsdoc",
-    "docusaurus", "@docusaurus/core",
+    "docusaurus",  # @docusaurus/* and @vuepress/* covered by prefixes.
     "vitepress", "vuepress",
     "redoc", "redoc-cli",
 }
@@ -1268,8 +1269,8 @@ DOC_BUILDER_NPM_PREFIXES: tuple[str, ...] = (
 
 AGENTIC_FRAMEWORK_NPM_NAMES: set[str] = {
     "langchain", "ai",  # vercel ai sdk
-    "openai", "@anthropic-ai/sdk",
-    "llamaindex", "@llamaindex/core",
+    "openai",  # @anthropic-ai/* covered by prefix.
+    "llamaindex",  # @llamaindex/* covered by prefix.
     "@google/generative-ai", "@cohere-ai/cohere-typescript",
 }
 AGENTIC_FRAMEWORK_NPM_PREFIXES: tuple[str, ...] = (
