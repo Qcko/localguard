@@ -1,0 +1,4 @@
+[localguard] BLOCK rt-pkg==1.0.0 (pypi) status=low-score
+rt-pkg==1.0.0 (pypi) [BLOCK: low-score]
+  -> rt-pkg==1.0.0: blocked-role-typical (role_typical_share=95%); `localguard inspect rt-pkg==1.0.0 --pretty` to review. most deductions are surfaces this role inherently uses -- `localguard accept rt-pkg==1.0.0` is likely safe after a quick read of the strict-surface findings.
+[localguard] blocked install: rt-pkg==1.0.0 (pypi): low-score

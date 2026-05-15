@@ -1,0 +1,4 @@
+[localguard] BLOCK susp-pkg==0.5.0 (pypi) status=low-score
+susp-pkg==0.5.0 (pypi) [BLOCK: low-score]
+  -> susp-pkg==0.5.0: blocked-suspicious (role_typical_share=15%); `localguard inspect susp-pkg==0.5.0 --pretty` to review. role-atypical deductions dominate -- read the report carefully before considering `localguard accept susp-pkg==0.5.0`.
+[localguard] blocked install: susp-pkg==0.5.0 (pypi): low-score
