@@ -9,3 +9,8 @@ wheels/
 # Virtual environments
 .venv
 SESSION.md
+
+# Calibration suite -- cached real-package tarballs are large (~300MB) and
+# generated. Run tools/seed_calibration_cache.py to populate locally.
+tests/calibration/data/
+tests/calibration/data_index.json
