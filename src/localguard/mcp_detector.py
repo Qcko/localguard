@@ -92,8 +92,10 @@ def _attr_tail(node: ast.AST) -> str:
 
 def _detect_javascript(source: SourceFile) -> list[Finding]:
     findings: list[Finding] = []
+    has_mcp_handler = False
     for line_no, line in enumerate(source.text.splitlines(), start=1):
         for match in MCP_JS_REGISTER_PATTERN.finditer(line):
+            has_mcp_handler = True
             kind = match.group(1)
             name = match.group(2)
             surface = SurfaceKind.MCP_TOOL if kind == "tool" else SurfaceKind.MCP_RESOURCE
@@ -105,6 +107,7 @@ def _detect_javascript(source: SourceFile) -> list[Finding]:
                 extra={"name": name, "decorator": kind},
             ))
         if MCP_JS_SET_HANDLER_PATTERN.search(line):
+            has_mcp_handler = True
             findings.append(Finding(
                 kind=SurfaceKind.MCP_TOOL,
                 file=source.rel,
@@ -112,7 +115,12 @@ def _detect_javascript(source: SourceFile) -> list[Finding]:
                 detail="setRequestHandler",
                 extra={"name": "<handler>", "decorator": "handler"},
             ))
-    findings.extend(_scan_description_for_injection(source.text, source, 1, source.rel))
+    # The injection scan is meaningful only for files that actually register
+    # MCP tools/handlers; a full-text scan of every JS file produced false
+    # positives on type stubs / vendored builds that happened to contain
+    # zero-width unicode in unrelated license headers or i18n tables.
+    if has_mcp_handler:
+        findings.extend(_scan_description_for_injection(source.text, source, 1, source.rel))
     return findings
 
 

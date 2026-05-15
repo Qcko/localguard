@@ -5,6 +5,7 @@ cli-framework          fs_write, subprocess
 network-library        hardcoded_host, outbound_dynamic, outbound_network
 web-server             fs_write, listening_port, subprocess
 build-tool             fs_write, hardcoded_host, outbound_dynamic, outbound_network, subprocess
+dev-server-bundler     fs_write, hardcoded_host, listening_port, outbound_dynamic, outbound_network, subprocess
 data-science           fs_write, hardcoded_host, outbound_dynamic, subprocess
 ml-framework           fs_write, hardcoded_host, listening_port, outbound_dynamic, outbound_network, subprocess
 database-driver        fs_write, hardcoded_host, outbound_dynamic, outbound_network
@@ -24,4 +25,4 @@ doc-builder            fs_write, hardcoded_host, outbound_dynamic, outbound_netw
 agentic-framework      fs_write, hardcoded_host, outbound_dynamic, outbound_network
 gui-toolkit            fs_write, hardcoded_host, listening_port, subprocess
 
-24 profiles total. Run `localguard profiles show <name>` for the full weight matrix.
+25 profiles total. Run `localguard profiles show <name>` for the full weight matrix.

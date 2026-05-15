@@ -34,6 +34,15 @@ VENDORED_DIR_NAMES = {
 PYTHON_SUFFIXES = {".py", ".pyi"}
 JS_SUFFIXES = {".js", ".mjs", ".cjs", ".ts", ".tsx", ".jsx"}
 TEXT_SUFFIXES = PYTHON_SUFFIXES | JS_SUFFIXES | {".md", ".txt", ".json", ".toml", ".yaml", ".yml", ".cfg", ".ini"}
+# Type-stub files contain *only* type annotations, never executable code.
+# `.d.ts` (TypeScript ambient declarations) and `.pyi` (PEP 484 stub) are
+# routinely Apache-licensed by their upstream (Microsoft TypeScript lib,
+# typeshed) and accumulate Apache URLs + zero-width unicode characters in
+# their headers; left in the runtime bucket they trip `hardcoded_host`
+# and `prompt_injection_hint` for no real reason. We still walk them so
+# the package's hash includes them, but route them to a non-runtime
+# context for scoring.
+TYPE_STUB_SUFFIXES = {".d.ts", ".pyi"}
 
 
 @dataclass(frozen=True)
@@ -108,11 +117,21 @@ def find_context(rel: str) -> str:
         return "generated"
     if _is_autogen_file(name):
         return "generated"
+    if _is_type_stub(name):
+        return "types"
     if _is_doc_or_meta_file(name) and len(parts) == 1:
         return "docs"
     if name in {"setup.py", "setup.cfg", "pyproject.toml", "package.json", "manifest.in"} and len(parts) == 1:
         return "setup"
     return "runtime"
+
+
+def _is_type_stub(name: str) -> bool:
+    """True for TypeScript ambient declarations (`.d.ts`) and PEP 484 stubs
+    (`.pyi`). These files contain no executable code, only type
+    information; findings here are noise."""
+    n = name.lower()
+    return n.endswith(".d.ts") or n.endswith(".pyi")
 
 
 def _is_autogen_file(name: str) -> bool:
@@ -141,8 +160,19 @@ def _is_vendored_part(part: str) -> bool:
 
 
 def _is_doc_or_meta_file(name: str) -> bool:
-    stem = name.rsplit(".", 1)[0]
-    return stem in {"readme", "changelog", "changes", "history", "license", "licence", "notice", "contributing", "authors", "copying", "security"}
+    stem = name.rsplit(".", 1)[0].lower()
+    if stem in {"readme", "changelog", "changes", "history", "license", "licence", "notice", "contributing", "authors", "copying", "security"}:
+        return True
+    # Upstream third-party-notice variants -- TypeScript ships
+    # `ThirdPartyNoticeText.txt`, other packages use `THIRD_PARTY_NOTICES.md`,
+    # `third-party-licenses.txt`, etc. These are pure attribution metadata
+    # and the URL/IP findings inside them are noise.
+    flat = stem.replace("_", "").replace("-", "")
+    if "notice" in flat and ("thirdparty" in flat or flat.startswith("thirdparty")):
+        return True
+    if "licenses" == stem or "licences" == stem:
+        return True
+    return False
 
 
 def _safe_read(path: Path) -> str | None:

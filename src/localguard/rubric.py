@@ -535,6 +535,30 @@ BUILD_TOOL_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
 }
 
+# Dev-server bundlers (vite, webpack-dev-server, snowpack, ...) -- bundling
+# tools that ALSO run an HTTP + websocket dev server during development.
+# Inherit build-tool's compile/transpile relaxations (subprocess for child
+# workers, fs_write for build output, outbound for package-registry lookups),
+# and additionally relax listening_port (the whole point of the role is to
+# bind a dev-server port). Stay strict on outbound_network -- a dev server
+# reaching the network outbound is still suspicious (it's there to SERVE
+# code to the developer's browser, not phone home) -- and on the
+# strict-by-design surfaces. Tight allowlist on purpose.
+DEV_SERVER_BUNDLER_WEIGHTS: dict[SurfaceKind, Weight] = {
+    SurfaceKind.OUTBOUND_NETWORK: Weight(2, 10),
+    SurfaceKind.OUTBOUND_DYNAMIC: Weight(4, 20),
+    SurfaceKind.LISTENING_PORT: Weight(0, 0),
+    SurfaceKind.SUBPROCESS: Weight(5, 20),
+    SurfaceKind.FS_WRITE: Weight(2, 10),
+    SurfaceKind.ENV_SECRET_READ: Weight(10, 20),
+    SurfaceKind.HARDCODED_HOST: Weight(1, 5),
+    SurfaceKind.TELEMETRY_ENDPOINT: Weight(10, 20),
+    SurfaceKind.OBFUSCATION: Weight(8, 60),
+    SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
+    SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
+    SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+}
+
 # A web server's purpose is to bind to a port, accept connections, fork worker
 # processes (gunicorn/hypercorn), and write logs/pidfiles/unix sockets. Relax
 # listening_port, subprocess, and fs_write. Stay strict on outbound (a web
@@ -583,6 +607,7 @@ PROFILE_CLI_FRAMEWORK = "cli-framework"
 PROFILE_NETWORK_LIBRARY = "network-library"
 PROFILE_WEB_SERVER = "web-server"
 PROFILE_BUILD_TOOL = "build-tool"
+PROFILE_DEV_SERVER_BUNDLER = "dev-server-bundler"
 PROFILE_DATA_SCIENCE = "data-science"
 PROFILE_ML_FRAMEWORK = "ml-framework"
 PROFILE_DATABASE_DRIVER = "database-driver"
@@ -610,6 +635,7 @@ PROFILE_WEIGHTS: dict[str, dict[SurfaceKind, Weight]] = {
     PROFILE_NETWORK_LIBRARY: NETWORK_LIBRARY_WEIGHTS,
     PROFILE_WEB_SERVER: WEB_SERVER_WEIGHTS,
     PROFILE_BUILD_TOOL: BUILD_TOOL_WEIGHTS,
+    PROFILE_DEV_SERVER_BUNDLER: DEV_SERVER_BUNDLER_WEIGHTS,
     PROFILE_DATA_SCIENCE: DATA_SCIENCE_WEIGHTS,
     PROFILE_ML_FRAMEWORK: ML_FRAMEWORK_WEIGHTS,
     PROFILE_DATABASE_DRIVER: DATABASE_DRIVER_WEIGHTS,
@@ -1072,6 +1098,10 @@ def detect_profile_from_name(name: str, ecosystem: str) -> tuple[str, str] | Non
             return PROFILE_CLI_FRAMEWORK, f"name-allowlist: {name}"
         if name in NETWORK_LIBRARY_NPM_NAMES:
             return PROFILE_NETWORK_LIBRARY, f"name-allowlist: {name}"
+        # Dev-server bundlers BEFORE build-tool: vite/parcel/snowpack bundle
+        # AND run dev servers, so they need listening_port relaxation.
+        if name in DEV_SERVER_BUNDLER_NPM_NAMES:
+            return PROFILE_DEV_SERVER_BUNDLER, f"name-allowlist: {name}"
         if name in BUILD_TOOL_NPM_NAMES:
             return PROFILE_BUILD_TOOL, f"name-allowlist: {name}"
         if name in ML_FRAMEWORK_NPM_NAMES:
@@ -1133,12 +1163,23 @@ NETWORK_LIBRARY_NPM_NAMES: set[str] = {
 }
 
 BUILD_TOOL_NPM_NAMES: set[str] = {
-    "webpack", "rollup", "vite", "parcel", "esbuild",
-    "@swc/core", "swc", "@parcel/core",
-    "gulp", "grunt", "browserify", "snowpack",
+    "webpack", "rollup", "esbuild",
+    "@swc/core", "swc",
+    "gulp", "grunt", "browserify",
     "turbo", "nx", "lerna", "tsup", "microbundle",
     "tsc", "typescript",  # tsc is build-shaped
     "@vitejs/plugin-react", "@vitejs/plugin-vue",  # commonly seen
+    # vite, parcel, @parcel/core, snowpack moved to DEV_SERVER_BUNDLER_NPM_NAMES
+    # (they bundle AND run dev servers; listening_port relaxation needed).
+}
+
+# Dev-server bundlers -- compile/bundle AND run a dev HTTP/WS server during
+# development. Order matters: dev-server-bundler is checked BEFORE
+# build-tool in detect_profile_from_name so vite resolves here not there.
+DEV_SERVER_BUNDLER_NPM_NAMES: set[str] = {
+    "vite", "parcel", "@parcel/core", "snowpack",
+    "webpack-dev-server", "@rspack/dev-server",
+    "rsbuild", "@rsbuild/core",
 }
 
 ML_FRAMEWORK_NPM_NAMES: set[str] = {

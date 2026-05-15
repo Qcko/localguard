@@ -441,15 +441,39 @@ def test_npm_axios_node_fetch_etc_detect_as_network_library():
     )
 
 
-def test_npm_webpack_vite_etc_detect_as_build_tool():
+def test_npm_webpack_swc_detect_as_build_tool():
+    """Pure compilers/bundlers (no dev server) resolve to build-tool."""
     assert rubric.detect_profile_from_name("webpack", "npm") == (
         rubric.PROFILE_BUILD_TOOL, "name-allowlist: webpack",
     )
-    assert rubric.detect_profile_from_name("vite", "npm") == (
-        rubric.PROFILE_BUILD_TOOL, "name-allowlist: vite",
-    )
     assert rubric.detect_profile_from_name("@swc/core", "npm") == (
         rubric.PROFILE_BUILD_TOOL, "name-allowlist: @swc/core",
+    )
+    assert rubric.detect_profile_from_name("rollup", "npm") == (
+        rubric.PROFILE_BUILD_TOOL, "name-allowlist: rollup",
+    )
+    assert rubric.detect_profile_from_name("esbuild", "npm") == (
+        rubric.PROFILE_BUILD_TOOL, "name-allowlist: esbuild",
+    )
+
+
+def test_npm_vite_parcel_snowpack_detect_as_dev_server_bundler():
+    """Bundlers that also run dev servers resolve to dev-server-bundler so
+    their dev-server listening_port findings don't sink the score."""
+    assert rubric.detect_profile_from_name("vite", "npm") == (
+        rubric.PROFILE_DEV_SERVER_BUNDLER, "name-allowlist: vite",
+    )
+    assert rubric.detect_profile_from_name("parcel", "npm") == (
+        rubric.PROFILE_DEV_SERVER_BUNDLER, "name-allowlist: parcel",
+    )
+    assert rubric.detect_profile_from_name("@parcel/core", "npm") == (
+        rubric.PROFILE_DEV_SERVER_BUNDLER, "name-allowlist: @parcel/core",
+    )
+    assert rubric.detect_profile_from_name("snowpack", "npm") == (
+        rubric.PROFILE_DEV_SERVER_BUNDLER, "name-allowlist: snowpack",
+    )
+    assert rubric.detect_profile_from_name("webpack-dev-server", "npm") == (
+        rubric.PROFILE_DEV_SERVER_BUNDLER, "name-allowlist: webpack-dev-server",
     )
 
 
