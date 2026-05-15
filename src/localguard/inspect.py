@@ -4,6 +4,7 @@ from pathlib import Path
 
 from . import audit, fetch
 from .report import AuditReport
+from .walker import PACKAGE_AUDIT_SKIP_DIRS
 
 
 def inspect(raw_spec: str, ecosystem: str | None = None, cache_root: Path | None = None, *, profile: str | None = None, profile_reason: str | None = None) -> tuple[AuditReport, fetch.PackageSpec, Path]:
@@ -16,7 +17,7 @@ def inspect(raw_spec: str, ecosystem: str | None = None, cache_root: Path | None
         detected = rubric.detect_profile_from_name(spec.name, spec.ecosystem)
         if detected:
             profile, profile_reason = detected
-    report = audit.audit_path(audit_root, profile=profile, profile_reason=profile_reason)
+    report = audit.audit_path(audit_root, profile=profile, profile_reason=profile_reason, skip_dirs=PACKAGE_AUDIT_SKIP_DIRS)
     _override_metadata(report, spec)
     return report, spec, audit_root
 

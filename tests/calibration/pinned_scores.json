@@ -14,7 +14,7 @@
     {"spec": "safetensors==0.4.5", "profile": "ml-framework", "score": 89},
     {"spec": "accelerate==1.1.1", "profile": "ml-framework", "score": 48},
     {"spec": "sqlalchemy==2.0.36", "profile": "database-driver", "score": 52, "role_typical_share": 0.19},
-    {"spec": "psycopg2-binary==2.9.10", "profile": "database-driver", "score": 83},
+    {"spec": "psycopg2-binary==2.9.10", "profile": "database-driver", "score": 26, "role_typical_share": 0.32, "library_status": "blocked-suspicious"},
     {"spec": "redis==5.2.1", "profile": "database-driver", "score": 91},
     {"spec": "pymongo==4.10.1", "profile": "database-driver", "score": 13, "library_status": "blocked-suspicious"},
     {"spec": "jinja2==3.1.4", "profile": "template-engine", "score": 84},
@@ -56,15 +56,15 @@
     {"spec": "pandas==2.2.3", "profile": "data-science", "score": 57},
     {"spec": "pip==24.3.1", "profile": "build-tool", "score": 68}
   ],
-  "_npm_note": "Round 8 first calibration of npm. Many packages score 100/0.00 -- the JS AST walker is reporting zero findings for express/jest/puppeteer/sharp/@sentry/node/@langchain/core. This may indicate walker gaps (the round-7 handoff specifically flagged this risk -- 'NPM realism: JS AST walker might miss patterns'). Pinned values reflect observed reality; investigating walker coverage is a round-9 item. @aws-sdk/client-s3@3.704.0 dropped (no such version on npm registry).",
+  "_npm_note": "Round-8 phase-4 calibration. Three JS walker fixes landed (skip_dirs override for dist/build, .listen.apply/.call + http.createServer, process.env[...] subscript form). express/@sentry/node/@langchain/core/axios/mongoose all see real findings now. jest, puppeteer, sharp remain 100/0.00 -- these are 'facade packages' that delegate to native bindings or sibling packages; static single-package analysis cannot recover them (handoff item #3, won't-fix). @aws-sdk/client-s3@3.704.0 was dropped (no such version on npm registry).",
   "npm": [
-    {"spec": "express@5.0.1", "profile": "web-framework", "score": 100, "role_typical_share": 0.0},
-    {"spec": "axios@1.7.9", "profile": "network-library", "score": 97, "role_typical_share": 1.0},
+    {"spec": "express@5.0.1", "profile": "web-framework", "score": 90, "role_typical_share": 1.0},
+    {"spec": "axios@1.7.9", "profile": "network-library", "score": 85, "role_typical_share": 1.0},
     {"spec": "jest@29.7.0", "profile": "test-framework", "score": 100, "role_typical_share": 0.0},
-    {"spec": "mongoose@8.8.4", "profile": "database-driver", "score": 99, "role_typical_share": 1.0},
+    {"spec": "mongoose@8.8.4", "profile": "database-driver", "score": 89, "role_typical_share": 0.18},
     {"spec": "webpack@5.97.1", "profile": "build-tool", "score": 65, "role_typical_share": 0.31},
-    {"spec": "@sentry/node@8.45.0", "profile": "observability", "score": 100, "role_typical_share": 0.0},
-    {"spec": "@langchain/core@0.3.27", "profile": "agentic-framework", "score": 100, "role_typical_share": 0.0},
+    {"spec": "@sentry/node@8.45.0", "profile": "observability", "score": 73, "role_typical_share": 0.0},
+    {"spec": "@langchain/core@0.3.27", "profile": "agentic-framework", "score": 10, "role_typical_share": 0.33, "library_status": "blocked-suspicious"},
     {"spec": "puppeteer@23.10.4", "profile": "scraping", "score": 100, "role_typical_share": 0.0},
     {"spec": "sharp@0.33.5", "profile": "format-codec", "score": 100, "role_typical_share": 0.0}
   ]

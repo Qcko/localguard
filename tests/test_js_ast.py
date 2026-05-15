@@ -109,3 +109,53 @@ def test_audit_path_picks_up_js_fixture():
     assert SurfaceKind.DATA_EXFIL_HINT.value in kinds
     assert report.ecosystem == "npm"
     assert report.score.final_score < 50
+
+
+def test_detects_listen_apply_indirect():
+    """`server.listen.apply(server, args)` -- express's express/lib/application.js
+    uses this pattern. The direct .listen detection misses it; the apply/call
+    walker recovers it."""
+    code = "server.listen.apply(server, [3000, callback]);"
+    findings = js_ast.audit_js(_src(code))
+    assert any(f.kind == SurfaceKind.LISTENING_PORT for f in findings), f"got {_kinds(findings)}"
+
+
+def test_detects_listen_call_indirect():
+    code = "obj.listen.call(this, 8080);"
+    findings = js_ast.audit_js(_src(code))
+    assert any(f.kind == SurfaceKind.LISTENING_PORT for f in findings)
+
+
+def test_detects_http_create_server_as_listening_port():
+    """`http.createServer(handler)` signals listening intent."""
+    code = "const http = require('http'); const s = http.createServer(handler);"
+    findings = js_ast.audit_js(_src(code))
+    assert any(f.kind == SurfaceKind.LISTENING_PORT and "createServer" in (f.extra.get("fqn") or "") for f in findings)
+
+
+def test_detects_https_create_server_alias():
+    code = "const https = require('https'); https.createServer(opts, app);"
+    findings = js_ast.audit_js(_src(code))
+    assert any(f.kind == SurfaceKind.LISTENING_PORT for f in findings)
+
+
+def test_detects_env_secret_subscript_form():
+    """`process.env['API_KEY']` -- the subscript form. Was a real false-negative
+    surfaced during round-8 npm calibration."""
+    code = "const k = process.env['API_KEY'];"
+    findings = js_ast.audit_js(_src(code))
+    assert any(f.kind == SurfaceKind.ENV_SECRET_READ and f.extra.get("env_name") == "API_KEY" for f in findings)
+
+
+def test_env_subscript_with_innocent_name_not_flagged():
+    code = "const v = process.env['NODE_ENV'];"
+    findings = js_ast.audit_js(_src(code))
+    assert not any(f.kind == SurfaceKind.ENV_SECRET_READ for f in findings)
+
+
+def test_env_subscript_computed_index_not_flagged():
+    """Subscript access via a computed expression must NOT fire -- we cannot
+    resolve `process.env[varName]` without dataflow."""
+    code = "const name = 'API_KEY'; const v = process.env[name];"
+    findings = js_ast.audit_js(_src(code))
+    assert not any(f.kind == SurfaceKind.ENV_SECRET_READ for f in findings)

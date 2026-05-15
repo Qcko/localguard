@@ -7,6 +7,13 @@ from typing import Iterator
 
 
 SKIP_DIRS = {".git", ".venv", "venv", "__pycache__", "node_modules", "dist", "build", ".localguard", ".pytest_cache", ".ruff_cache"}
+# Package-audit skip set: drops `dist` and `build` because npm's publishing
+# convention ships the entire artifact under one of those names (e.g. jest's
+# `build/index.js`, @sentry/node's `build/cjs/**`, @langchain/core's `dist/**`).
+# Skipping them means we audit zero of the shipped surface. Used by
+# inspect.py when auditing a fetched tarball; dev-tree audits (audit_path
+# called directly without override) keep the SKIP_DIRS default.
+PACKAGE_AUDIT_SKIP_DIRS = SKIP_DIRS - {"dist", "build"}
 TEST_DIR_NAMES = {"tests", "test", "testing", "__tests__", "spec", "specs"}
 DOC_DIR_NAMES = {"docs", "doc", "examples", "example", "samples"}
 I18N_DIR_NAMES = {"locales", "locale", "i18n", "lang", "langs", "translations", "messages"}
@@ -37,8 +44,9 @@ class SourceFile:
     text: str
 
 
-def walk_target(root: Path) -> Iterator[SourceFile]:
-    for path in _iter_files(root):
+def walk_target(root: Path, *, skip_dirs: set[str] | None = None) -> Iterator[SourceFile]:
+    skip = skip_dirs if skip_dirs is not None else SKIP_DIRS
+    for path in _iter_files(root, skip):
         language = _classify(path)
         if language == "binary":
             continue
@@ -48,9 +56,9 @@ def walk_target(root: Path) -> Iterator[SourceFile]:
         yield SourceFile(path=path, rel=str(path.relative_to(root)).replace("\\", "/"), language=language, text=text)
 
 
-def hash_target(root: Path) -> str:
+def hash_target(root: Path, *, skip_dirs: set[str] | None = None) -> str:
     digest = hashlib.sha256()
-    for source in sorted(walk_target(root), key=lambda s: s.rel):
+    for source in sorted(walk_target(root, skip_dirs=skip_dirs), key=lambda s: s.rel):
         digest.update(source.rel.encode("utf-8"))
         digest.update(b"\0")
         digest.update(source.text.encode("utf-8", errors="replace"))
@@ -58,18 +66,18 @@ def hash_target(root: Path) -> str:
     return digest.hexdigest()
 
 
-def _iter_files(root: Path) -> Iterator[Path]:
+def _iter_files(root: Path, skip: set[str]) -> Iterator[Path]:
     for path in root.rglob("*"):
         if not path.is_file():
             continue
-        if _is_skipped(path, root):
+        if _is_skipped(path, root, skip):
             continue
         yield path
 
 
-def _is_skipped(path: Path, root: Path) -> bool:
+def _is_skipped(path: Path, root: Path, skip: set[str]) -> bool:
     rel_parts = path.relative_to(root).parts
-    return any(part in SKIP_DIRS for part in rel_parts)
+    return any(part in skip for part in rel_parts)
 
 
 def _classify(path: Path) -> str:

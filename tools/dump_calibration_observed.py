@@ -16,6 +16,7 @@ ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT / "src"))
 
 from localguard import audit, preflight, rubric  # noqa: E402
+from localguard.walker import PACKAGE_AUDIT_SKIP_DIRS  # noqa: E402
 
 CALIB_DIR = ROOT / "tests" / "calibration"
 INDEX_PATH = CALIB_DIR / "data_index.json"
@@ -54,7 +55,7 @@ def main() -> int:
             profile, reason = detected if detected else (None, None)
             with tempfile.TemporaryDirectory() as tmp:
                 root = _unpack(tarball, Path(tmp), ecosystem=eco)
-                report = audit.audit_path(root, profile=profile, profile_reason=reason)
+                report = audit.audit_path(root, profile=profile, profile_reason=reason, skip_dirs=PACKAGE_AUDIT_SKIP_DIRS)
             classify = preflight._classify_blocked_status(report.to_dict()) if report.score.final_score < 50 else "n/a"
             pinned_row = rows_by_spec.get(spec, {})
             pinned_score = pinned_row.get("score", "?")

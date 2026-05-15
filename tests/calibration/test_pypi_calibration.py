@@ -20,6 +20,7 @@ from pathlib import Path
 import pytest
 
 from localguard import audit, manifest, preflight, rubric
+from localguard.walker import PACKAGE_AUDIT_SKIP_DIRS
 
 from .conftest import (
     cached_tarball_for,
@@ -69,7 +70,7 @@ def test_pypi_calibration(row, tmp_path, calibration_tolerance):
         audit_root = _unpack(tarball, short_tmp)
         detected = rubric.detect_profile_from_name(name, "pypi")
         profile, profile_reason = detected if detected else (None, None)
-        report = audit.audit_path(audit_root, profile=profile, profile_reason=profile_reason)
+        report = audit.audit_path(audit_root, profile=profile, profile_reason=profile_reason, skip_dirs=PACKAGE_AUDIT_SKIP_DIRS)
     finally:
         shutil.rmtree(short_tmp, ignore_errors=True)
 

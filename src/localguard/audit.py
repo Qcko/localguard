@@ -9,9 +9,9 @@ from .report import AuditReport, Finding
 from .walker import SourceFile, hash_target, walk_target
 
 
-def audit_path(target: Path, *, profile: str | None = None, profile_reason: str | None = None) -> AuditReport:
+def audit_path(target: Path, *, profile: str | None = None, profile_reason: str | None = None, skip_dirs: set[str] | None = None) -> AuditReport:
     target = target.resolve()
-    sources = list(walk_target(target))
+    sources = list(walk_target(target, skip_dirs=skip_dirs))
     findings = _collect_findings(target, sources)
     findings = text_sweep.dedupe_hosts(findings)
     metadata = _detect_metadata(target)
@@ -22,7 +22,7 @@ def audit_path(target: Path, *, profile: str | None = None, profile_reason: str 
     effective_profile = profile or rubric.DEFAULT_PROFILE
     report = AuditReport(
         target=str(target),
-        target_hash=hash_target(target),
+        target_hash=hash_target(target, skip_dirs=skip_dirs),
         findings=findings,
         files_audited=len(sources),
         profile=effective_profile,

@@ -18,6 +18,14 @@ FS_MODULES = {"fs", "node:fs", "fs/promises", "node:fs/promises", "fs-extra", "g
 NETWORK_METHODS = {"request", "get", "post", "put", "patch", "delete", "head", "options", "fetch"}
 SUBPROCESS_METHODS = {"exec", "execSync", "spawn", "spawnSync", "fork", "execFile", "execFileSync"}
 FS_WRITE_METHODS = {"writeFile", "writeFileSync", "appendFile", "appendFileSync", "createWriteStream", "outputFile", "outputFileSync", "writeJson", "writeJsonSync"}
+# Server factory methods on net/http/tls modules. Calls like
+# `http.createServer(handler)` return an object whose only meaningful
+# downstream use is .listen(...) -- the call itself signals the package
+# wants to listen on a port. Catching this surface here fires for express's
+# `application.js:610 http.createServer(this)` even when the .listen() is
+# behind .apply() / .call() and we miss it directly.
+SERVER_FACTORY_MODULES = {"http", "https", "node:http", "node:https", "http2", "node:http2", "net", "node:net", "tls", "node:tls"}
+SERVER_FACTORY_METHODS = {"createServer", "createSecureServer"}
 
 SECRET_NAME_PATTERN = re.compile(r"(API[_-]?KEY|TOKEN|SECRET|PASSWORD|PASSWD|PRIVATE[_-]?KEY|CREDENTIAL)", re.IGNORECASE)
 SENSITIVE_VAR_HINT = re.compile(r"(token|secret|password|api[_-]?key|credential|cookie|session|auth)", re.IGNORECASE)
@@ -128,6 +136,8 @@ def _walk(node, source_bytes: bytes, rel: str, aliases: dict[str, str], findings
             _check_new(child, source_bytes, rel, findings)
         elif child.type == "member_expression":
             _check_env_secret(child, source_bytes, rel, findings)
+        elif child.type == "subscript_expression":
+            _check_env_secret_subscript(child, source_bytes, rel, findings)
 
 
 def _check_call(call_node, source_bytes: bytes, rel: str, aliases: dict[str, str], findings: list[Finding]) -> None:
@@ -151,6 +161,21 @@ def _check_call(call_node, source_bytes: bytes, rel: str, aliases: dict[str, str
         if prop == "listen" and _looks_like_listen(args_node):
             findings.append(_finding(SurfaceKind.LISTENING_PORT, rel, line, detail, {"fqn": f"{obj or '?'}.listen"}))
             return
+        # Indirect .listen via Function.prototype.apply/call: `server.listen.apply(server, args)`.
+        # Walk through the property to look for `.listen` one level deeper.
+        if prop in {"apply", "call"}:
+            inner = fn_node.child_by_field_name("object")
+            if inner is not None and inner.type == "member_expression":
+                inner_obj_node = inner.child_by_field_name("object")
+                inner_prop_node = inner.child_by_field_name("property")
+                if (
+                    inner_prop_node is not None
+                    and inner_prop_node.type == "property_identifier"
+                    and _text(inner_prop_node, source_bytes) == "listen"
+                ):
+                    inner_obj = _text(inner_obj_node, source_bytes) if inner_obj_node else "?"
+                    findings.append(_finding(SurfaceKind.LISTENING_PORT, rel, line, detail, {"fqn": f"{inner_obj}.listen.{prop}"}))
+                    return
         if obj is None or prop is None:
             return
         module = aliases.get(obj)
@@ -216,6 +241,34 @@ def _check_env_secret(member_node, source_bytes: bytes, rel: str, findings: list
     findings.append(_finding(SurfaceKind.ENV_SECRET_READ, rel, line, f"process.env.{name}", {"env_name": name}))
 
 
+def _check_env_secret_subscript(node, source_bytes: bytes, rel: str, findings: list[Finding]) -> None:
+    """Catch `process.env['SECRET_NAME']` -- the subscript form of env access.
+
+    Mirrors `_check_env_secret` but resolves the property via `index` rather
+    than `property`. Only matches literal string indices; computed indices
+    fall through (would require dataflow to resolve).
+    """
+    obj_node = node.child_by_field_name("object")
+    index_node = node.child_by_field_name("index")
+    if obj_node is None or index_node is None:
+        return
+    if obj_node.type != "member_expression":
+        return
+    inner_obj = obj_node.child_by_field_name("object")
+    inner_prop = obj_node.child_by_field_name("property")
+    if inner_obj is None or inner_prop is None:
+        return
+    if _text(inner_obj, source_bytes) != "process" or _text(inner_prop, source_bytes) != "env":
+        return
+    if index_node.type != "string":
+        return
+    name = _string_literal(index_node, source_bytes)
+    if not name or not SECRET_NAME_PATTERN.search(name):
+        return
+    line = node.start_point[0] + 1
+    findings.append(_finding(SurfaceKind.ENV_SECRET_READ, rel, line, f"process.env[{name!r}]", {"env_name": name}))
+
+
 def _looks_like_listen(args_node) -> bool:
     if args_node is None:
         return False
@@ -272,6 +325,8 @@ def _classify_member(module: str, method: str) -> SurfaceKind | None:
         return SurfaceKind.OUTBOUND_NETWORK
     if module in FS_MODULES and method in FS_WRITE_METHODS:
         return SurfaceKind.FS_WRITE
+    if module in SERVER_FACTORY_MODULES and method in SERVER_FACTORY_METHODS:
+        return SurfaceKind.LISTENING_PORT
     return None
 
 
