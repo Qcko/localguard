@@ -233,3 +233,25 @@ def test_preflight_safe_when_baseline_identical(tmp_path: Path):
 
     assert verdict.safe
     assert verdict.status == "safe"
+
+
+def test_preflight_accepted_hash_match_bypasses_min_score(tmp_path: Path):
+    """A baseline with status=accepted and matching target_hash is the user's
+    explicit "I've reviewed these exact bytes" signal -- re-running the same
+    install should not re-block on score < min_score. A drifted hash or a
+    non-accepted (blocked-*) baseline must still gate normally."""
+    cache_root = tmp_path / "cache"
+    library_root = tmp_path / "lib"
+    baseline_report = audit.audit_path(FIXTURES / "tampered_v1").to_dict()
+    baseline_report["name"] = "drifty-pkg"
+    baseline_report["version"] = "0.1.0"
+    baseline_report["status"] = "accepted"
+    manifest.write_library_entry(baseline_report, library_root=library_root)
+    _seed_cache(cache_root, FIXTURES / "tampered_v1", "drifty-pkg", "0.1.0")
+
+    # min_score absurdly high; without the hash-match bypass this would block.
+    verdict = preflight.preflight("drifty-pkg==0.1.0", cache_root=cache_root, library_root=library_root, min_score=100)
+
+    assert verdict.safe
+    assert verdict.status == "safe"
+    assert not any("below threshold" in r for r in verdict.reasons)

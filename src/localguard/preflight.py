@@ -187,7 +187,14 @@ def _classify_blocked_status(report_dict: dict) -> str:
 def _diff_verdict(report_dict, baseline, spec, score, min_score) -> Verdict:
     drift = diff.diff_reports(baseline, report_dict).to_dict()
     reasons: list[str] = []
-    if score < min_score:
+    candidate_hash = report_dict.get("target_hash")
+    baseline_hash = baseline.get("target_hash")
+    hash_match_accepted = (
+        baseline.get("status") == "accepted"
+        and candidate_hash
+        and candidate_hash == baseline_hash
+    )
+    if score < min_score and not hash_match_accepted:
         reasons.append(f"score {score} below threshold {min_score}")
     novel_high_risk = _novel_high_risk(drift, baseline, report_dict)
     if novel_high_risk:
