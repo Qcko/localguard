@@ -14,3 +14,6 @@ SESSION.md
 # generated. Run tools/seed_calibration_cache.py to populate locally.
 tests/calibration/data/
 tests/calibration/data_index.json
+
+# Claude Code runtime state (lock files, transient scheduled-task bookkeeping).
+.claude/scheduled_tasks.lock
