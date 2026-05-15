@@ -94,15 +94,48 @@ def test_full_loop_block_review_promote_allow(tmp_path, monkeypatch, capsys):
     assert report["status"] == "accepted"
     assert "expected_surface_counts" in report and report["expected_surface_counts"]
 
-    # 4. Re-install: with min_score lowered to model "user adjusted the
-    #    threshold for this score band," the hook now allows because
-    #    latest_known_good returns the promoted entry and the diff path
-    #    finds no novel high-risk surfaces (pin-surfaces absorbs them).
-    #    NOTE: _diff_verdict re-runs the score check unconditionally, so a
-    #    low-score promotion alone doesn't allow future installs at the
-    #    same threshold -- the user must also adjust LOCALGUARD_MIN_SCORE.
-    monkeypatch.setattr(preflight, "DEFAULT_MIN_SCORE", 30)
+    # 4. Re-install: hook now allows. min_score is still 80 (well above
+    #    the package's score of 48), but _diff_verdict bypasses the score
+    #    gate when baseline.status == "accepted" AND the candidate's
+    #    target_hash matches the baseline's target_hash. The user has
+    #    already reviewed this exact artifact -- defense-in-depth is
+    #    preserved for novel high-risk surfaces and profile changes,
+    #    but the score floor is not re-litigated.
     code, out, err = hook.render_to_string(payload)
     assert code == 0, f"expected allow, got code={code} err={err}"
     assert "OK" in out
     assert "BLOCK" not in err
+
+
+def test_hash_mismatch_still_blocks_after_promote(tmp_path, monkeypatch):
+    """The bypass at _diff_verdict is hash-scoped, not name-scoped. If the
+    user promotes drifty-pkg==0.2.0 (hash A) and an attacker later
+    re-publishes drifty-pkg==0.2.0 with different bytes (hash B), the score
+    floor must still gate the install -- the user has NOT reviewed hash B.
+    """
+    name, version = "drifty-pkg", "0.2.0"
+    _seed_cache_only(tmp_path, name, version, FIXTURES / "tampered_v2")
+    _patch_roots(monkeypatch, tmp_path)
+    monkeypatch.setattr(preflight, "DEFAULT_MIN_SCORE", 80)
+
+    # First install: block + auto-write.
+    payload = json.dumps({"tool_name": "Bash", "tool_input": {"command": f"pip install {name}=={version}"}})
+    code, _out, _err = hook.render_to_string(payload)
+    assert code == 2
+
+    # Promote.
+    rc = cli.main(["library", "promote", f"{name}=={version}", "--yes"])
+    assert rc == 0
+
+    # Tamper with the cached source so the next audit produces a different
+    # target_hash for the same name+version.
+    src = tmp_path / "cache" / "pypi" / name / version / "src" / f"{name}-{version}"
+    extra = src / "__init__.py"
+    existing = extra.read_text(encoding="utf-8") if extra.exists() else ""
+    extra.write_text(existing + "\n# attacker-injected change\n", encoding="utf-8")
+
+    # Re-install: hash no longer matches the accepted baseline. Score gate
+    # must re-engage and block.
+    code, _out, err = hook.render_to_string(payload)
+    assert code == 2, f"expected block on hash mismatch, got code={code}"
+    assert "BLOCK" in err or "block" in err.lower()
