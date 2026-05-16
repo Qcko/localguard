@@ -1,16 +1,21 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import shlex
 import sys
+import tomllib
 from dataclasses import dataclass
 from io import StringIO
+from pathlib import Path
 
 from . import deps as deps_mod
 
 
 SPEC_PATTERN = re.compile(r"^(?:@[A-Za-z0-9._-]+/)?[A-Za-z0-9._-]+(?:[@=]{1,2}[A-Za-z0-9._+\-]+)?$")
+
+_GATED_TOOLS = {"Bash", "PowerShell"}
 
 
 @dataclass(frozen=True)
@@ -19,6 +24,7 @@ class ExtractedInstall:
     specs: list[str]
     profile_hint: str | None = None
     profile_reason: str | None = None
+    block_reason: str | None = None
 
 
 def _parse_payload(text: str) -> dict | None:
@@ -34,14 +40,19 @@ def _parse_payload(text: str) -> dict | None:
 
 def run_hook(stdin_text: str, stderr=sys.stderr, stdout=sys.stdout) -> int:
     payload = _parse_payload(stdin_text)
-    if payload is None or payload.get("tool_name") != "Bash":
+    if payload is None or payload.get("tool_name") not in _GATED_TOOLS:
         return 0
     command = (payload.get("tool_input") or {}).get("command") or ""
-    installs = extract_installs(command)
+    cwd = payload.get("cwd") or os.getcwd()
+    installs = extract_installs(command, cwd=cwd)
     if not installs:
         return 0
     blockers: list[str] = []
     for install in installs:
+        if install.block_reason and not install.specs:
+            stderr.write(f"[localguard] BLOCK ({install.ecosystem}): {install.block_reason}\n")
+            blockers.append(f"({install.ecosystem}): {install.block_reason}")
+            continue
         for spec in install.specs:
             try:
                 node = deps_mod.audit_tree(spec, ecosystem=install.ecosystem, profile=install.profile_hint, profile_reason=install.profile_reason)
@@ -122,7 +133,7 @@ def _walk_tree(node):
         yield from _walk_tree(c)
 
 
-def extract_installs(command: str) -> list[ExtractedInstall]:
+def extract_installs(command: str, cwd: str | None = None) -> list[ExtractedInstall]:
     installs: list[ExtractedInstall] = []
     for fragment in _split_chained(command):
         try:
@@ -131,8 +142,10 @@ def extract_installs(command: str) -> list[ExtractedInstall]:
             continue
         if not tokens:
             continue
-        install = _classify(tokens)
-        if install and install.specs:
+        install = _classify(tokens, cwd)
+        if install is None:
+            continue
+        if install.specs or install.block_reason:
             installs.append(install)
     return installs
 
@@ -145,7 +158,7 @@ def _split_chained(command: str) -> list[str]:
 _REDIRECT_TOKEN = re.compile(r"^\d*[<>]+&?\d*$")
 
 
-def _classify(tokens: list[str]) -> ExtractedInstall | None:
+def _classify(tokens: list[str], cwd: str | None = None) -> ExtractedInstall | None:
     head = tokens[0].lower()
     # Runner-style verbs imply "fetch and run as a standalone tool" -- the
     # user's deliberate choice of invocation is a strong signal that the
@@ -170,12 +183,107 @@ def _classify(tokens: list[str]) -> ExtractedInstall | None:
             return ExtractedInstall(ecosystem="pypi", specs=_specs_after_flags(tokens[2:]))
         if sub == "pip" and len(tokens) >= 3 and tokens[2].lower() == "install":
             return ExtractedInstall(ecosystem="pypi", specs=_specs_after_flags(tokens[3:]))
+        if sub == "pip" and len(tokens) >= 3 and tokens[2].lower() == "sync":
+            return ExtractedInstall(
+                ecosystem="pypi",
+                specs=[],
+                block_reason=(
+                    "`uv pip sync` resolves from a requirements file -- "
+                    "audit it manually with `localguard audit -r <file>` "
+                    "before running"
+                ),
+            )
+        if sub in {"sync", "lock"}:
+            verb = f"uv {sub}"
+            specs = _resolve_uv_project_specs(cwd, tokens[1:])
+            if specs is None:
+                return ExtractedInstall(
+                    ecosystem="pypi",
+                    specs=[],
+                    block_reason=(
+                        f"`{verb}` invoked but no readable pyproject.toml "
+                        f"found from cwd={cwd!r} -- audit declared "
+                        f"dependencies manually before running"
+                    ),
+                )
+            if not specs:
+                return None
+            return ExtractedInstall(ecosystem="pypi", specs=specs, profile_reason=f"install-verb: {verb}")
     if head in {"npm", "pnpm"} and len(tokens) >= 2:
         sub = tokens[1].lower()
         if sub in {"install", "i", "add"}:
             return ExtractedInstall(ecosystem="npm", specs=_specs_after_flags(tokens[2:]))
     if head == "yarn" and len(tokens) >= 2 and tokens[1].lower() == "add":
         return ExtractedInstall(ecosystem="npm", specs=_specs_after_flags(tokens[2:]))
+    return None
+
+
+_PEP508_NAME = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)")
+
+
+def _resolve_uv_project_specs(cwd: str | None, sub_tokens: list[str]) -> list[str] | None:
+    """Read pyproject.toml from `cwd` (or --project / --directory override)
+    and return the declared dependency names. Returns None if no pyproject
+    is found or it cannot be parsed -- callers convert that into a BLOCK.
+    """
+    project_root = _find_uv_project_root(cwd, sub_tokens)
+    if project_root is None:
+        return None
+    pyproject = project_root / "pyproject.toml"
+    try:
+        data = tomllib.loads(pyproject.read_text(encoding="utf-8"))
+    except (OSError, tomllib.TOMLDecodeError):
+        return None
+    names: list[str] = []
+    seen: set[str] = set()
+
+    def _collect(entries):
+        if not isinstance(entries, list):
+            return
+        for entry in entries:
+            if not isinstance(entry, str):
+                continue
+            m = _PEP508_NAME.match(entry)
+            if not m:
+                continue
+            key = m.group(1).lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            names.append(m.group(1))
+
+    project = data.get("project") or {}
+    _collect(project.get("dependencies"))
+    for group in (project.get("optional-dependencies") or {}).values():
+        _collect(group)
+    for group in (data.get("dependency-groups") or {}).values():
+        _collect(group)
+    return names
+
+
+def _find_uv_project_root(cwd: str | None, sub_tokens: list[str]) -> Path | None:
+    override = _extract_uv_project_override(sub_tokens)
+    if override is not None:
+        candidate = Path(override)
+        if not candidate.is_absolute() and cwd:
+            candidate = Path(cwd) / candidate
+        return candidate if (candidate / "pyproject.toml").is_file() else None
+    start = Path(cwd) if cwd else Path.cwd()
+    for parent in (start, *start.parents):
+        if (parent / "pyproject.toml").is_file():
+            return parent
+    return None
+
+
+def _extract_uv_project_override(sub_tokens: list[str]) -> str | None:
+    i = 0
+    while i < len(sub_tokens):
+        tok = sub_tokens[i]
+        if tok in {"--project", "--directory"} and i + 1 < len(sub_tokens):
+            return sub_tokens[i + 1]
+        if tok.startswith("--project=") or tok.startswith("--directory="):
+            return tok.split("=", 1)[1]
+        i += 1
     return None
 
 

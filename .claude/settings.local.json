@@ -53,7 +53,8 @@
       "Bash(tee /tmp/seed_npm.log)",
       "Bash(LOCALGUARD_CALIBRATION_DEEP=1 uv run pytest tests/calibration/ -q)",
       "Bash(tee /tmp/observed2.txt)",
-      "Bash(git commit *)"
+      "Bash(git commit *)",
+      "Bash(cat ~/.claude/settings.json 2>/dev/null | head -80)"
     ]
   }
 }

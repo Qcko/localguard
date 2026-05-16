@@ -192,6 +192,104 @@ def test_hook_blocks_via_unknown_transitive_dep(tmp_path, monkeypatch):
     assert "accept --with-deps" in err
 
 
+def test_extract_uv_sync_reads_pyproject(tmp_path):
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "demo"\nversion = "0.1"\n'
+        'dependencies = ["numpy>=2.0", "silero-vad", "faster-whisper==1.0.0"]\n'
+        '[project.optional-dependencies]\n'
+        'gpu = ["torch>=2.0"]\n'
+        '[dependency-groups]\n'
+        'dev = ["pytest"]\n',
+        encoding="utf-8",
+    )
+    installs = hook.extract_installs("uv sync", cwd=str(tmp_path))
+    assert len(installs) == 1
+    assert installs[0].ecosystem == "pypi"
+    assert sorted(installs[0].specs) == ["faster-whisper", "numpy", "pytest", "silero-vad", "torch"]
+    assert installs[0].profile_reason == "install-verb: uv sync"
+
+
+def test_extract_uv_lock_reads_pyproject(tmp_path):
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "demo"\nversion = "0.1"\ndependencies = ["requests"]\n',
+        encoding="utf-8",
+    )
+    installs = hook.extract_installs("uv lock", cwd=str(tmp_path))
+    assert installs[0].specs == ["requests"]
+
+
+def test_extract_uv_sync_walks_up_to_find_pyproject(tmp_path):
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "demo"\nversion = "0.1"\ndependencies = ["httpx"]\n',
+        encoding="utf-8",
+    )
+    nested = tmp_path / "sub" / "deeper"
+    nested.mkdir(parents=True)
+    installs = hook.extract_installs("uv sync", cwd=str(nested))
+    assert installs[0].specs == ["httpx"]
+
+
+def test_extract_uv_sync_blocks_when_pyproject_missing(tmp_path):
+    installs = hook.extract_installs("uv sync", cwd=str(tmp_path))
+    assert len(installs) == 1
+    assert installs[0].specs == []
+    assert installs[0].block_reason is not None
+    assert "pyproject.toml" in installs[0].block_reason
+
+
+def test_extract_uv_pip_sync_always_blocks():
+    installs = hook.extract_installs("uv pip sync requirements.txt")
+    assert len(installs) == 1
+    assert installs[0].specs == []
+    assert installs[0].block_reason is not None
+    assert "requirements file" in installs[0].block_reason
+
+
+def test_extract_uv_sync_honors_project_flag(tmp_path):
+    proj = tmp_path / "elsewhere"
+    proj.mkdir()
+    (proj / "pyproject.toml").write_text(
+        '[project]\nname = "demo"\nversion = "0.1"\ndependencies = ["flask"]\n',
+        encoding="utf-8",
+    )
+    installs = hook.extract_installs(f"uv sync --project {proj}", cwd=str(tmp_path))
+    assert installs[0].specs == ["flask"]
+
+
+def test_extract_uv_sync_with_empty_deps_is_skipped(tmp_path):
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "demo"\nversion = "0.1"\ndependencies = []\n',
+        encoding="utf-8",
+    )
+    assert hook.extract_installs("uv sync", cwd=str(tmp_path)) == []
+
+
+def test_hook_runs_for_powershell_tool(monkeypatch):
+    def boom(*_args, **_kwargs):
+        raise RuntimeError("network down")
+    monkeypatch.setattr(deps, "audit_tree", boom)
+    payload = json.dumps({
+        "tool_name": "PowerShell",
+        "tool_input": {"command": "pip install ghost==9.9.9"},
+    })
+    code, _out, err = hook.render_to_string(payload)
+    assert code == 2
+    assert "ghost" in err
+
+
+def test_hook_blocks_uv_sync_without_pyproject(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
+    payload = json.dumps({
+        "tool_name": "Bash",
+        "tool_input": {"command": "uv sync"},
+        "cwd": str(tmp_path),
+    })
+    code, _out, err = hook.render_to_string(payload)
+    assert code == 2
+    assert "BLOCK" in err
+    assert "pyproject.toml" in err
+
+
 def _seed_synthetic_dep(tmp_path: Path, name: str, version: str, *, deps: list) -> None:
     src = tmp_path / "cache" / "pypi" / name / version / "src" / f"{name}-{version}"
     src.mkdir(parents=True, exist_ok=True)
