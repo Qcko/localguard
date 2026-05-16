@@ -184,15 +184,30 @@ def _classify(tokens: list[str], cwd: str | None = None) -> ExtractedInstall | N
         if sub == "pip" and len(tokens) >= 3 and tokens[2].lower() == "install":
             return ExtractedInstall(ecosystem="pypi", specs=_specs_after_flags(tokens[3:]))
         if sub == "pip" and len(tokens) >= 3 and tokens[2].lower() == "sync":
-            return ExtractedInstall(
-                ecosystem="pypi",
-                specs=[],
-                block_reason=(
-                    "`uv pip sync` resolves from a requirements file -- "
-                    "audit it manually with `localguard audit -r <file>` "
-                    "before running"
-                ),
-            )
+            files = _requirement_file_args(tokens[3:])
+            if not files:
+                return ExtractedInstall(
+                    ecosystem="pypi",
+                    specs=[],
+                    block_reason=(
+                        "`uv pip sync` invoked without a requirements file "
+                        "argument -- nothing to audit"
+                    ),
+                )
+            specs = _resolve_requirements_specs(cwd, files)
+            if specs is None:
+                return ExtractedInstall(
+                    ecosystem="pypi",
+                    specs=[],
+                    block_reason=(
+                        f"`uv pip sync` requirements file(s) "
+                        f"{files!r} not readable from cwd={cwd!r} -- "
+                        f"audit manually before running"
+                    ),
+                )
+            if not specs:
+                return None
+            return ExtractedInstall(ecosystem="pypi", specs=specs, profile_reason="install-verb: uv pip sync")
         if sub in {"sync", "lock"}:
             verb = f"uv {sub}"
             specs = _resolve_uv_project_specs(cwd, tokens[1:])
@@ -219,6 +234,81 @@ def _classify(tokens: list[str], cwd: str | None = None) -> ExtractedInstall | N
 
 
 _PEP508_NAME = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)")
+
+_REQ_FLAGS_WITH_VALUE = {"-r", "--requirement", "-c", "--constraint", "-e", "--editable"}
+
+
+def _requirement_file_args(tokens: list[str]) -> list[str]:
+    """Positional arguments to `uv pip sync` are requirements files.
+    Skip flag values and flags that don't name files."""
+    files: list[str] = []
+    skip_next = False
+    for tok in tokens:
+        if skip_next:
+            skip_next = False
+            continue
+        if tok in _REQ_FLAGS_WITH_VALUE:
+            skip_next = True
+            continue
+        if tok.startswith("--") and "=" in tok:
+            continue
+        if tok.startswith("-"):
+            continue
+        files.append(tok)
+    return files
+
+
+def _resolve_requirements_specs(cwd: str | None, files: list[str], *, _seen: set[Path] | None = None) -> list[str] | None:
+    """Read requirements files and return declared package names.
+    Recurses one level into `-r other.txt` includes. Returns None if any
+    listed file is unreadable (conservative BLOCK)."""
+    if _seen is None:
+        _seen = set()
+    base = Path(cwd) if cwd else Path.cwd()
+    names: list[str] = []
+    seen_names: set[str] = set()
+
+    def _add(name: str) -> None:
+        key = name.lower()
+        if key in seen_names:
+            return
+        seen_names.add(key)
+        names.append(name)
+
+    for raw in files:
+        path = Path(raw)
+        if not path.is_absolute():
+            path = base / path
+        try:
+            path = path.resolve()
+        except OSError:
+            return None
+        if path in _seen:
+            continue
+        _seen.add(path)
+        try:
+            text = path.read_text(encoding="utf-8")
+        except OSError:
+            return None
+        for line in text.splitlines():
+            line = line.split("#", 1)[0].strip()
+            if not line:
+                continue
+            if line.startswith(("-r ", "--requirement ")):
+                nested = line.split(None, 1)[1].strip()
+                nested_specs = _resolve_requirements_specs(str(path.parent), [nested], _seen=_seen)
+                if nested_specs is None:
+                    return None
+                for n in nested_specs:
+                    _add(n)
+                continue
+            if line.startswith("-"):
+                continue
+            spec = line.split(";", 1)[0].strip()  # drop env marker
+            m = _PEP508_NAME.match(spec)
+            if m:
+                _add(m.group(1))
+    return names
 
 
 def _resolve_uv_project_specs(cwd: str | None, sub_tokens: list[str]) -> list[str] | None:

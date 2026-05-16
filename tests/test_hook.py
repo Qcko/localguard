@@ -237,12 +237,47 @@ def test_extract_uv_sync_blocks_when_pyproject_missing(tmp_path):
     assert "pyproject.toml" in installs[0].block_reason
 
 
-def test_extract_uv_pip_sync_always_blocks():
-    installs = hook.extract_installs("uv pip sync requirements.txt")
+def test_extract_uv_pip_sync_reads_requirements(tmp_path):
+    (tmp_path / "requirements.txt").write_text(
+        "# comment line\n"
+        "\n"
+        "requests==2.31.0\n"
+        "httpx>=0.27\n"
+        "pandas; python_version>='3.10'\n"
+        "-e ./local-pkg\n",
+        encoding="utf-8",
+    )
+    installs = hook.extract_installs("uv pip sync requirements.txt", cwd=str(tmp_path))
     assert len(installs) == 1
+    assert sorted(installs[0].specs) == ["httpx", "pandas", "requests"]
+    assert installs[0].profile_reason == "install-verb: uv pip sync"
+
+
+def test_extract_uv_pip_sync_recurses_includes(tmp_path):
+    (tmp_path / "base.txt").write_text("flask\n", encoding="utf-8")
+    (tmp_path / "requirements.txt").write_text("-r base.txt\nsqlalchemy\n", encoding="utf-8")
+    installs = hook.extract_installs("uv pip sync requirements.txt", cwd=str(tmp_path))
+    assert sorted(installs[0].specs) == ["flask", "sqlalchemy"]
+
+
+def test_extract_uv_pip_sync_blocks_when_file_missing(tmp_path):
+    installs = hook.extract_installs("uv pip sync ghost.txt", cwd=str(tmp_path))
     assert installs[0].specs == []
     assert installs[0].block_reason is not None
-    assert "requirements file" in installs[0].block_reason
+    assert "not readable" in installs[0].block_reason
+
+
+def test_extract_uv_pip_sync_blocks_with_no_file_arg():
+    installs = hook.extract_installs("uv pip sync")
+    assert installs[0].specs == []
+    assert "without a requirements file" in installs[0].block_reason
+
+
+def test_extract_uv_pip_sync_multiple_files(tmp_path):
+    (tmp_path / "a.txt").write_text("alpha\n", encoding="utf-8")
+    (tmp_path / "b.txt").write_text("beta\n", encoding="utf-8")
+    installs = hook.extract_installs("uv pip sync a.txt b.txt", cwd=str(tmp_path))
+    assert sorted(installs[0].specs) == ["alpha", "beta"]
 
 
 def test_extract_uv_sync_honors_project_flag(tmp_path):
