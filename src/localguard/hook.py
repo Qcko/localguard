@@ -390,14 +390,67 @@ def _specs_after_flags(args: list[str]) -> list[str]:
             continue
         if _REDIRECT_TOKEN.match(token):
             break  # shell redirection — anything after is not pkg args
+        token = _strip_surrounding_quotes(token)
         if token.startswith("-"):
             if token in {"-r", "--requirement", "-c", "--constraint", "-e", "--editable", "-t", "--target"}:
                 skip_next = True
             continue
-        if not _looks_like_registry_spec(token):
+        normalized = _normalize_spec(token)
+        if normalized is None:
             continue
-        specs.append(token)
+        specs.append(normalized)
     return specs
+
+
+def _strip_surrounding_quotes(token: str) -> str:
+    # shlex.split(posix=False) preserves surrounding quotes -- callers
+    # quote PEP 508 specs like "piper-tts>=1.4.2" to keep the shell from
+    # eating the `>`, and the quotes ride along into the token.
+    if len(token) >= 2 and token[0] == token[-1] and token[0] in ('"', "'"):
+        return token[1:-1]
+    return token
+
+
+_NAME_END_RE = re.compile(r"[=<>~^!@]")
+_VERSION_OPERATOR_CHARS = set("=<>~^!")
+
+
+def _normalize_spec(token: str) -> str | None:
+    """Return the form to pass downstream, or None if the token is not a
+    registry identifier. Exact-pin forms (`pkg==X`, npm `pkg@1.2.3`) are
+    preserved so audit_tree pins the audited version; range / inequality
+    forms (`>=`, `^`, `~`, ...) are stripped to the bare name and
+    audit_tree resolves the latest matching version."""
+    name, version = _split_name_version(token)
+    if not _looks_like_registry_spec(name):
+        return None
+    if version is None:
+        return name
+    if _is_literal_version(version):
+        return token
+    return name
+
+
+def _split_name_version(token: str) -> tuple[str, str | None]:
+    if token.startswith("@"):
+        at_idx = token.find("@", 1)
+        if at_idx == -1:
+            return token, None
+        return token[:at_idx], token[at_idx + 1 :]
+    m = _NAME_END_RE.search(token)
+    if not m:
+        return token, None
+    return token[: m.start()], token[m.start() :]
+
+
+def _is_literal_version(version: str) -> bool:
+    """A literal version part has no range operators. npm: bare `X.Y.Z`.
+    pypi exact pin: leading `==` followed by no further operator chars."""
+    if not any(c in _VERSION_OPERATOR_CHARS for c in version):
+        return True  # npm `pkg@1.2.3` form
+    if version.startswith("==") and not any(c in _VERSION_OPERATOR_CHARS for c in version[2:]):
+        return True  # pypi exact pin
+    return False
 
 
 def _looks_like_registry_spec(token: str) -> bool:

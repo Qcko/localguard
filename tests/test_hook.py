@@ -65,6 +65,31 @@ def test_extract_uv_add():
     assert installs[0].specs == ["fastapi", "pydantic"]
 
 
+def test_extract_uv_add_quoted_pep508_spec():
+    # GLaDOS 2026-05-17 repro: `uv add "piper-tts>=1.4.2"` silently
+    # bypassed the hook because shlex(posix=False) preserved the quotes
+    # and SPEC_PATTERN didn't accept `>=`.
+    installs = hook.extract_installs('uv add "piper-tts>=1.4.2"')
+    assert installs[0].ecosystem == "pypi"
+    assert installs[0].specs == ["piper-tts"]
+
+
+def test_extract_pip_install_pep508_unquoted():
+    installs = hook.extract_installs("pip install requests>=2.0 httpx~=0.27")
+    assert installs[0].specs == ["requests", "httpx"]
+
+
+def test_extract_npm_install_scoped_with_range():
+    installs = hook.extract_installs("npm install @scope/pkg@^1.2.0 lodash@~4.17.0")
+    assert installs[0].ecosystem == "npm"
+    assert installs[0].specs == ["@scope/pkg", "lodash"]
+
+
+def test_extract_single_quoted_spec():
+    installs = hook.extract_installs("pip install 'numpy<2.0'")
+    assert installs[0].specs == ["numpy"]
+
+
 def test_extract_uv_pip_install():
     installs = hook.extract_installs("uv pip install ruff")
     assert installs[0].ecosystem == "pypi"
