@@ -54,7 +54,10 @@
       "Bash(LOCALGUARD_CALIBRATION_DEEP=1 uv run pytest tests/calibration/ -q)",
       "Bash(tee /tmp/observed2.txt)",
       "Bash(git commit *)",
-      "Bash(cat ~/.claude/settings.json 2>/dev/null | head -80)"
+      "Bash(cat ~/.claude/settings.json 2>/dev/null | head -80)",
+      "Bash(python -c \"import shlex; print\\(shlex.split\\('uv add \\\\\"piper-tts>=1.4.2\\\\\"', posix=False\\)\\)\")",
+      "Bash(git checkout *)",
+      "Bash(git -C E:/dev/localguard merge --ff-only origin/claude/romantic-gates-e6d8fd)"
     ]
   }
 }
