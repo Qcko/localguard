@@ -697,12 +697,28 @@ def detect_profile_from_content(findings: list[Finding]) -> tuple[str, str] | No
     return None
 
 
+# Well-known MCP server SDKs. The `mcp` package is THE flagship Python MCP SDK
+# and ships a `mcp dev` / `mcp install` console script -- without this allowlist
+# detect_profile_from_metadata would classify it as cli-framework on the strength
+# of that single entry point, while content detection misses it because the SDK's
+# @mcp.tool / @mcp.resource registrations live in tests + examples (filtered out
+# of runtime by walker.find_context). Same shape for `fastmcp`, the high-level
+# wrapper. Name-allowlist sits before metadata detection in the priority chain,
+# so adding the SDKs here is the surgical fix.
+MCP_SDK_NAMES: set[str] = {
+    "mcp", "fastmcp",
+}
+
 # Well-known CLI framework packages. Tight allowlist on purpose -- these are
 # libraries whose entire purpose is dispatching subprocesses based on user input,
 # they have no package-metadata signal (they don't declare scripts themselves),
 # and they are widely depended-upon. Names check against canonical form.
+# `ruff` and `uv` are Rust binaries wrapped by a tiny Python shim and ship no
+# [project.scripts], so the metadata signal (signal #5) never fires for them --
+# the name allowlist is the only way to catch them as CLIs.
 CLI_FRAMEWORK_NAMES: set[str] = {
     "click", "typer", "cleo", "fire", "docopt", "docopt-ng", "rich-click",
+    "ruff", "uv",
 }
 
 # Well-known HTTP client libraries. Tight allowlist on purpose -- these are
@@ -1044,6 +1060,8 @@ def detect_profile_from_name(name: str, ecosystem: str) -> tuple[str, str] | Non
     if ecosystem == "pypi":
         if name.startswith("mcp-server-"):
             return PROFILE_MCP_SERVER, "name-convention: mcp-server-*"
+        if name in MCP_SDK_NAMES:
+            return PROFILE_MCP_SERVER, f"name-allowlist: {name} (mcp sdk)"
         if name in CLI_FRAMEWORK_NAMES:
             return PROFILE_CLI_FRAMEWORK, f"name-allowlist: {name}"
         if name in NETWORK_LIBRARY_NAMES:

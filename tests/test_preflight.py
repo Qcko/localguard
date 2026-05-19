@@ -255,3 +255,31 @@ def test_preflight_accepted_hash_match_bypasses_min_score(tmp_path: Path):
     assert verdict.safe
     assert verdict.status == "safe"
     assert not any("below threshold" in r for r in verdict.reasons)
+
+
+def test_preflight_honors_baseline_pinned_profile(tmp_path: Path):
+    """When the user accepted a package under an explicit --profile, the
+    library entry stores that profile. On the next install, preflight must
+    re-audit under the pinned profile -- otherwise auto-detection picks a
+    different profile and `_diff_verdict` flags `profile_changed` drift.
+    Reproduces the mcp==1.27.1 (accepted under mcp-server, auto-detects
+    cli-framework) drift loop reported by GLaDOS 2026-05-19.
+    """
+    cache_root = tmp_path / "cache"
+    library_root = tmp_path / "lib"
+    baseline_report = audit.audit_path(FIXTURES / "clean_pkg").to_dict()
+    baseline_report["name"] = "clean-pkg"
+    baseline_report["version"] = "0.1.0"
+    baseline_report["status"] = "accepted"
+    baseline_report["profile"] = "mcp-server"
+    baseline_report["profile_reason"] = "manual: --profile mcp-server"
+    manifest.write_library_entry(baseline_report, library_root=library_root)
+    _seed_cache(cache_root, FIXTURES / "clean_pkg", "clean-pkg", "0.1.0")
+
+    verdict = preflight.preflight("clean-pkg==0.1.0", cache_root=cache_root, library_root=library_root)
+
+    assert verdict.safe
+    assert verdict.status == "safe"
+    # The drift dict (if any) must not flag profile_changed.
+    drift = verdict.drift or {}
+    assert not drift.get("profile_changed"), drift

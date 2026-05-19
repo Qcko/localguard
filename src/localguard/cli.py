@@ -629,6 +629,8 @@ def _handle_accept(args: argparse.Namespace) -> int:
     if args.with_deps:
         return _handle_accept_with_deps(args)
     profile, reason = _resolve_profile(args)
+    if profile is not None:
+        _warn_if_profile_diverges_from_autodetect(args, profile)
     report, spec, _ = inspect_mod.inspect(args.spec, ecosystem=args.ecosystem, profile=profile, profile_reason=reason)
     report_dict = report.to_dict()
     score = (report_dict.get("score") or {}).get("final_score")
@@ -649,6 +651,26 @@ def _handle_accept(args: argparse.Namespace) -> int:
     library_path = manifest.write_library_entry(report_dict)
     sys.stdout.write(f"baselined: {library_path}\n")
     return 0
+
+
+def _warn_if_profile_diverges_from_autodetect(args: argparse.Namespace, explicit_profile: str) -> None:
+    """A package accepted under one profile but auto-detected as another will
+    block on the next install with `profile_changed` drift. Surface that at
+    accept-time so the user can either drop --profile or know to expect the
+    library-baseline pin (preflight honors the accepted profile on re-audit).
+    """
+    try:
+        report, _spec, _ = inspect_mod.inspect(args.spec, ecosystem=args.ecosystem)
+    except Exception:
+        return
+    detected = report.profile
+    if not detected or detected == explicit_profile:
+        return
+    sys.stdout.write(
+        f"note: --profile {explicit_profile} overrides auto-detection ({detected}); "
+        f"the accepted entry will pin the profile so future installs honor "
+        f"--profile {explicit_profile} instead of re-detecting.\n"
+    )
 
 
 def _surface_counts_from_report(report_dict: dict) -> dict[str, int]:
