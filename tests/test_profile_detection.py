@@ -56,6 +56,29 @@ def test_click_typer_etc_detect_as_cli_framework():
     assert rubric.detect_profile_from_name("fire", "pypi") == (rubric.PROFILE_CLI_FRAMEWORK, "name-allowlist: fire")
 
 
+def test_ruff_uv_detect_as_cli_framework():
+    # Rust-shim CLIs ship no [project.scripts] so metadata detection misses
+    # them; the name allowlist is the only signal that catches them.
+    assert rubric.detect_profile_from_name("ruff", "pypi") == (
+        rubric.PROFILE_CLI_FRAMEWORK, "name-allowlist: ruff",
+    )
+    assert rubric.detect_profile_from_name("uv", "pypi") == (
+        rubric.PROFILE_CLI_FRAMEWORK, "name-allowlist: uv",
+    )
+
+
+def test_mcp_sdk_detected_as_mcp_server():
+    # The flagship Python MCP SDK ships a `mcp dev` console script, which
+    # would otherwise route through metadata detection as cli-framework.
+    # The name allowlist beats that signal in priority order.
+    assert rubric.detect_profile_from_name("mcp", "pypi") == (
+        rubric.PROFILE_MCP_SERVER, "name-allowlist: mcp (mcp sdk)",
+    )
+    assert rubric.detect_profile_from_name("fastmcp", "pypi") == (
+        rubric.PROFILE_MCP_SERVER, "name-allowlist: fastmcp (mcp sdk)",
+    )
+
+
 def test_metadata_detection_pypi_console_scripts(tmp_path):
     (tmp_path / "pyproject.toml").write_text("""
 [project]
@@ -627,7 +650,7 @@ def test_npm_unknown_packages_are_not_detected():
 
 def test_normal_libraries_are_not_detected():
     assert rubric.detect_profile_from_name("lodash", "npm") is None
-    assert rubric.detect_profile_from_name("mcp", "pypi") is None  # the SDK itself: library, not server
+    # `mcp` pypi: now classified as mcp-server SDK; see test_mcp_sdk_detected_as_mcp_server.
     assert rubric.detect_profile_from_name("@modelcontextprotocol/sdk", "npm") is None
     assert rubric.detect_profile_from_name("pyyaml", "pypi") is None
 

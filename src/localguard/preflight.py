@@ -103,8 +103,32 @@ def preflight(
     profile_reason: str | None = None,
 ) -> Verdict:
     cache_root = cache_root or fetch.DEFAULT_CACHE_ROOT
+    library_root = library_root or manifest.DEFAULT_LIBRARY_ROOT
+    if profile is None:
+        pinned = _pinned_profile_for_spec(raw_spec, ecosystem, library_root)
+        if pinned is not None:
+            profile, profile_reason = pinned
     report, spec, _ = inspect.inspect(raw_spec, ecosystem=ecosystem, cache_root=cache_root, profile=profile, profile_reason=profile_reason)
     return verdict_for_report(report.to_dict(), spec, min_score=min_score, accept_new=accept_new, auto_accept_score=auto_accept_score, library_root=library_root)
+
+
+def _pinned_profile_for_spec(raw_spec: str, ecosystem: str | None, library_root: Path) -> tuple[str, str] | None:
+    """Re-use the accepted baseline's profile so a re-audit can't disagree
+    with the profile under which the user originally accepted the package.
+    Without this, `accept --profile X` for a package whose auto-detection
+    picks Y produces a `profile_changed: X -> Y` drift on the next install.
+    """
+    try:
+        spec = fetch.parse_spec(raw_spec, ecosystem_override=ecosystem)
+    except Exception:
+        return None
+    baseline = manifest.latest_known_good(spec.name, spec.ecosystem, library_root=library_root)
+    if not baseline:
+        return None
+    pinned = baseline.get("profile")
+    if not pinned:
+        return None
+    return pinned, f"library-baseline: pinned profile {pinned}"
 
 
 def verdict_for_report(report_dict: dict, spec: fetch.PackageSpec, *, min_score: int | None = None, accept_new: bool = False, auto_accept_score: int | None = None, library_root: Path | None = None) -> Verdict:
