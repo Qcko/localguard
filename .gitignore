@@ -17,3 +17,7 @@ tests/calibration/data_index.json
 
 # Claude Code runtime state (lock files, transient scheduled-task bookkeeping).
 .claude/scheduled_tasks.lock
+.claude/worktrees/
+
+# One-off prompt artifacts pasted in for a single session.
+PROMPT-from-*.md
