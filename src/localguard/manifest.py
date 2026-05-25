@@ -10,7 +10,19 @@ from typing import Any
 PROJECT_DIR_NAME = ".localguard"
 PINNED_FILENAME = "pinned.json"
 SCHEMA_VERSION = 1
-DEFAULT_LIBRARY_ROOT = Path(os.environ.get("LOCALGUARD_LIBRARY") or r"E:\localguard\library")
+
+
+def __getattr__(name: str) -> Any:
+    if name == "DEFAULT_LIBRARY_ROOT":
+        value = os.environ.get("LOCALGUARD_LIBRARY")
+        if not value:
+            raise RuntimeError(
+                "LOCALGUARD_LIBRARY is not set. Point it at the dir "
+                "you want localguard to use as its baseline library "
+                "(e.g. `setx LOCALGUARD_LIBRARY \"%USERPROFILE%\\.localguard\\library\"`)."
+            )
+        return Path(value)
+    raise AttributeError(name)
 
 
 def project_pin_path(project_root: Path) -> Path:

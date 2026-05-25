@@ -12,7 +12,17 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-DEFAULT_CACHE_ROOT = Path(os.environ.get("LOCALGUARD_CACHE") or r"E:\localguard\cache")
+def __getattr__(name: str):
+    if name == "DEFAULT_CACHE_ROOT":
+        value = os.environ.get("LOCALGUARD_CACHE")
+        if not value:
+            raise RuntimeError(
+                "LOCALGUARD_CACHE is not set. Point it at the dir you "
+                "want localguard to use for cached package tarballs "
+                "(e.g. `setx LOCALGUARD_CACHE \"%USERPROFILE%\\.localguard\\cache\"`)."
+            )
+        return Path(value)
+    raise AttributeError(name)
 
 NPM_SCOPED_PATTERN = re.compile(r"^@[^/]+/[^@]+(?:@.+)?$")
 NPM_BARE_VERSIONED = re.compile(r"^[^@/]+@.+$")
@@ -30,7 +40,9 @@ class FetchError(RuntimeError):
     pass
 
 
-def fetch_package(spec: PackageSpec, cache_root: Path = DEFAULT_CACHE_ROOT) -> Path:
+def fetch_package(spec: PackageSpec, cache_root: Path | None = None) -> Path:
+    if cache_root is None:
+        cache_root = DEFAULT_CACHE_ROOT
     dest = _cache_dir(spec, cache_root)
     if _has_unpacked_contents(dest):
         _touch_cache_entry(dest)

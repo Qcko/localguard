@@ -178,5 +178,5 @@ def test_doctor_warns_on_stale_schema(tmp_path, good_settings):
 
 def test_resolve_bash_executable_path_roundtrips_drive(monkeypatch):
     monkeypatch.setattr("os.name", "nt")
-    p = doctor._resolve_bash_executable_path("/e/uv/tools/bin/localguard.exe hook-bash")
-    assert p == Path("E:/uv/tools/bin/localguard.exe")
+    p = doctor._resolve_bash_executable_path("/x/uv/tools/bin/localguard.exe hook-bash")
+    assert p == Path("X:/uv/tools/bin/localguard.exe")

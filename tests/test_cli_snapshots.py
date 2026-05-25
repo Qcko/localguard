@@ -33,20 +33,15 @@ def _clean_env(monkeypatch):
     monkeypatch.delenv("LOCALGUARD_MIN_SCORE", raising=False)
     monkeypatch.delenv("LOCALGUARD_AUTO_ACCEPT_SCORE", raising=False)
     monkeypatch.delenv("LOCALGUARD_LIBRARY", raising=False)
-    # The defaults are resolved at import time via _env_int; re-pin them to
-    # the builtin values for this test so an exported env var in the user's
-    # shell doesn't taint the snapshot.
+    monkeypatch.delenv("LOCALGUARD_CACHE", raising=False)
     monkeypatch.setattr(preflight, "DEFAULT_MIN_SCORE", preflight._BUILTIN_MIN_SCORE)
     monkeypatch.setattr(preflight, "DEFAULT_AUTO_ACCEPT_SCORE", preflight._BUILTIN_AUTO_ACCEPT_SCORE)
-    monkeypatch.setattr(manifest, "DEFAULT_LIBRARY_ROOT", Path("/test/library"))
 
 
 def test_config_show_snapshot(_clean_env, capsys):
     rc = cli.main(["config", "show"])
     assert rc == 0
-    expected_template = (SNAPSHOT_DIR / "config_show.txt").read_text(encoding="utf-8")
-    expected = expected_template.format(LIBRARY_ROOT=str(manifest.DEFAULT_LIBRARY_ROOT))
-    assert _normalize(capsys.readouterr().out) == _normalize(expected)
+    _assert_snapshot(capsys.readouterr().out, "config_show.txt")
 
 
 def test_profiles_list_snapshot(capsys):

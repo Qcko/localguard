@@ -4,6 +4,7 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from typing import Any
 
 from . import audit, cache as cache_mod, deps as deps_mod, diff, doctor as doctor_mod, egress as egress_mod, fetch, hook, init_hook as init_hook_mod, inspect as inspect_mod, library_refresh as library_refresh_mod, manifest, preflight as preflight_mod, rubric
 
@@ -52,6 +53,18 @@ def _add_config(sub: argparse._SubParsersAction) -> None:
     p_show.set_defaults(handler=_handle_config_show)
 
 
+def _env_entry(key: str, env_var: str) -> dict[str, Any]:
+    import os
+    raw = os.environ.get(env_var)
+    return {
+        "key": key,
+        "value": raw if raw else f"(unset — set {env_var})",
+        "env_var": env_var,
+        "builtin_default": None,
+        "source": "env" if raw else "unset",
+    }
+
+
 def _handle_config_show(args: argparse.Namespace) -> int:
     import os
     entries = [
@@ -69,13 +82,8 @@ def _handle_config_show(args: argparse.Namespace) -> int:
             "builtin_default": preflight_mod._BUILTIN_AUTO_ACCEPT_SCORE,
             "source": "env" if os.environ.get("LOCALGUARD_AUTO_ACCEPT_SCORE") else "builtin",
         },
-        {
-            "key": "library_root",
-            "value": str(manifest.DEFAULT_LIBRARY_ROOT),
-            "env_var": "LOCALGUARD_LIBRARY",
-            "builtin_default": r"E:\localguard\library",
-            "source": "env" if os.environ.get("LOCALGUARD_LIBRARY") else "builtin",
-        },
+        _env_entry("library_root", "LOCALGUARD_LIBRARY"),
+        _env_entry("cache_root", "LOCALGUARD_CACHE"),
     ]
     if args.json:
         _emit_json(entries, pretty=True)

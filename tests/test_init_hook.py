@@ -7,8 +7,8 @@ from localguard import init_hook
 
 
 def test_windows_to_bash_converts_drive_letter():
-    raw = PureWindowsPath("E:/uv/tools/bin/localguard.exe")
-    assert init_hook._windows_to_bash(raw) == "/e/uv/tools/bin/localguard.exe"
+    raw = PureWindowsPath("X:/uv/tools/bin/localguard.exe")
+    assert init_hook._windows_to_bash(raw) == "/x/uv/tools/bin/localguard.exe"
 
 
 def test_windows_to_bash_lowercases_drive():

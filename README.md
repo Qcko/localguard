@@ -13,8 +13,10 @@ uv run localguard pin   <path>              # write .localguard/pinned.json + gl
 uv run localguard diff  <path> [--pretty]   # exit 1 if novel surface appeared
 ```
 
-Global library defaults to `E:\localguard\library\` (override with `LOCALGUARD_LIBRARY`).
-Project pin lives at `<project>/.localguard/pinned.json`.
+Global library location is required via `LOCALGUARD_LIBRARY`; cache via
+`LOCALGUARD_CACHE`. Both should point at writeable directories outside
+your project tree (e.g. `%USERPROFILE%\.localguard\library`). Project
+pin lives at `<project>/.localguard/pinned.json`.
 
 ## Surfaces detected (v0)
 

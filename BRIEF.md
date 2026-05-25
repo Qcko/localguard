@@ -1,12 +1,12 @@
 # LocalGuard — project brief
 
-Hand this file to a fresh Claude Code session started in `E:\dev\localguard\`.
-It is self-contained; the new session has no memory of the conversation that
-produced it.
+Hand this file to a fresh Claude Code session started in the LocalGuard
+working directory. It is self-contained; the new session has no memory
+of the conversation that produced it.
 
 ## Why this exists
 
-A sibling project (`E:\dev\GLados`) is a local-first home assistant that will
+A sibling project (the maintainer's GLaDOS repo) is a local-first home assistant that will
 integrate a growing list of third-party MCP servers, Python packages, and
 local models. The threat we care about is **supply-chain drift**: a dependency
 or MCP server that was locally-scoped on day one quietly starts phoning home,
@@ -63,9 +63,10 @@ Skip CLI polish, packaging, and a config file system until the core works.
 
 ## Conventions inherited from the user's setup
 
-- **Default install drive is `E:\`.** Working dir lives at `E:\dev\localguard`.
-  Any caches, models, virtualenvs route to `E:\` (`UV_CACHE_DIR=E:\uv\cache`
-  etc.) — never `C:\`.
+- **Prefer routing caches, models, and virtualenvs off the system drive.**
+  Use the relevant env vars (`UV_CACHE_DIR`, `UV_PYTHON_INSTALL_DIR`,
+  `LOCALGUARD_LIBRARY`, `LOCALGUARD_CACHE`, …) instead of hardcoding
+  paths anywhere committed.
 - **Tooling**: prefer `uv` for Python env + deps. Python 3.12+.
 - **Code style**: Clean Code (Robert C. Martin). Rule of 7. Intent-revealing
   names. Stepdown rule for function order. Avoid comments — extract a
@@ -89,5 +90,5 @@ Skip CLI polish, packaging, and a config file system until the core works.
 
 ## Out of scope for the new session
 
-Anything in `E:\dev\GLados`. LocalGuard is its own repo, own venv, own
-commits. GLaDOS will adopt it later as an external tool.
+Anything in the sibling GLaDOS repo. LocalGuard is its own repo, own
+venv, own commits. GLaDOS will adopt it later as an external tool.

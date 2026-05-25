@@ -368,7 +368,7 @@ Goal: Gaps 8, 9.
 2. **Tarball storage**: cached locally only (`LOCALGUARD_CALIBRATION_CACHE`
    env var pointing at a local dir), or check in to git LFS, or rely on a
    separate fixture-build step? Recommend local cache + SHA verify; no LFS;
-   no commits. Same UX as the existing `E:\localguard\cache\` runtime cache.
+   no commits. Same UX as the existing `$LOCALGUARD_CACHE` runtime cache.
 
 3. **Snapshot test framework**: roll our own with `capsys.readouterr()` and
    golden-file compare, or pull in `pytest-snapshot` / `syrupy`? Recommend

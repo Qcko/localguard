@@ -1,6 +1,7 @@
 KEY                    VALUE                                    SOURCE   ENV VAR
 min_score              50                                       builtin  LOCALGUARD_MIN_SCORE
 auto_accept_score      90                                       builtin  LOCALGUARD_AUTO_ACCEPT_SCORE
-library_root           {LIBRARY_ROOT:<40} builtin  LOCALGUARD_LIBRARY
+library_root           (unset — set LOCALGUARD_LIBRARY)         unset    LOCALGUARD_LIBRARY
+cache_root             (unset — set LOCALGUARD_CACHE)           unset    LOCALGUARD_CACHE
 
 Override a value by setting the env var (e.g. `setx LOCALGUARD_MIN_SCORE 60` on Windows).
