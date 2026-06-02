@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import argparse
+import difflib
 import json
 import sys
 from pathlib import Path
 from typing import Any
 
-from . import audit, cache as cache_mod, deps as deps_mod, diff, doctor as doctor_mod, egress as egress_mod, fetch, hook, init_hook as init_hook_mod, inspect as inspect_mod, library_refresh as library_refresh_mod, manifest, preflight as preflight_mod, rubric
+from . import audit, cache as cache_mod, deps as deps_mod, diff, doctor as doctor_mod, egress as egress_mod, fetch, hook, init_hook as init_hook_mod, inspect as inspect_mod, library_refresh as library_refresh_mod, manifest, memory as memory_mod, memory_scan as memory_scan_mod, memory_store as memory_store_mod, preflight as preflight_mod, rubric
+from .memory_scan import scan_memory
 
 
 PROFILE_CHOICES = list(rubric.PROFILE_WEIGHTS.keys())
@@ -34,6 +36,7 @@ def _build_parser() -> argparse.ArgumentParser:
     _add_deps(sub)
     _add_tree(sub)
     _add_library(sub)
+    _add_memory(sub)
     _add_cache(sub)
     _add_egress(sub)
     _add_diff_versions(sub)
@@ -245,6 +248,165 @@ def _handle_egress(args: argparse.Namespace) -> int:
         return 1
     profile = egress_mod.profile_from_report(report)
     _emit_json(profile, pretty=True)
+    return 0
+
+
+def _add_memory(sub: argparse._SubParsersAction) -> None:
+    p = sub.add_parser("memory", help="Vet trusted-content blobs (e.g. server-shipped memory) against an approved baseline.")
+    mem_sub = p.add_subparsers(dest="memory_command", required=True)
+
+    p_check = mem_sub.add_parser("check", help="Load-time gate: hash a blob and report whether it matches an approved baseline. Exits non-zero (fail closed) on unknown/changed content. No model, deterministic.")
+    p_check.add_argument("file", help="Path to the content file, or '-' for stdin.")
+    p_check.add_argument("--source", required=True, help="Stable origin key (e.g. the MCP server id).")
+    p_check.add_argument("--json", action="store_true")
+    p_check.set_defaults(handler=_handle_memory_check)
+
+    p_approve = mem_sub.add_parser("approve", help="Approval-time gate: static injection scan + human confirmation, then record the blob's hash as an approved baseline. Never auto-approves.")
+    p_approve.add_argument("file", help="Path to the content file, or '-' for stdin.")
+    p_approve.add_argument("--source", required=True, help="Stable origin key (e.g. the MCP server id).")
+    p_approve.add_argument("--yes", action="store_true", help="Skip the confirmation prompt.")
+    p_approve.set_defaults(handler=_handle_memory_approve)
+
+    p_list = mem_sub.add_parser("list", help="List approved-memory baselines (newest first).")
+    p_list.add_argument("--source", default=None, help="Filter to one source.")
+    p_list.add_argument("--json", action="store_true")
+    p_list.set_defaults(handler=_handle_memory_list)
+
+    p_show = mem_sub.add_parser("show", help="Show an approved-memory baseline record (latest version unless --version given).")
+    p_show.add_argument("source")
+    p_show.add_argument("--version", default=None, help="Specific version (e.g. v2); defaults to the latest approved.")
+    p_show.set_defaults(handler=_handle_memory_show)
+
+    p_forget = mem_sub.add_parser("forget", help="Remove a source's baseline (a single --version, or all versions) so the content must be re-approved.")
+    p_forget.add_argument("source")
+    p_forget.add_argument("--version", default=None, help="Remove only this version; omit to remove every version for the source.")
+    p_forget.add_argument("--yes", action="store_true")
+    p_forget.set_defaults(handler=_handle_memory_forget)
+
+
+def _read_blob_arg(file_arg: str) -> str:
+    if file_arg == "-":
+        return sys.stdin.read()
+    return Path(file_arg).read_text(encoding="utf-8")
+
+
+def _handle_memory_check(args: argparse.Namespace) -> int:
+    blob = _read_blob_arg(args.file)
+    verdict = memory_mod.is_approved(args.source, blob)
+    if args.json:
+        _emit_json({
+            "approved": verdict.approved,
+            "reason": verdict.reason,
+            "source": verdict.source,
+            "sha256": verdict.sha256,
+            "version": verdict.version,
+        }, pretty=True)
+        return 0 if verdict.approved else 1
+    status = "APPROVED" if verdict.approved else "BLOCKED"
+    sys.stdout.write(f"{status}  source={verdict.source}  sha256={verdict.sha256[:12]}\n")
+    sys.stdout.write(f"  {verdict.reason}")
+    sys.stdout.write(f"  (baseline {verdict.version})\n" if verdict.version else "\n")
+    return 0 if verdict.approved else 1
+
+
+def _handle_memory_approve(args: argparse.Namespace) -> int:
+    blob = _read_blob_arg(args.file)
+    sha = memory_store_mod.blob_sha256(blob)
+    findings = scan_memory(blob)
+    summary = memory_scan_mod.summarize(findings)
+    sys.stdout.write(f"source:  {args.source}\n")
+    sys.stdout.write(f"sha256:  {sha}\n")
+    sys.stdout.write(f"length:  {len(blob)} chars\n")
+    sys.stdout.write(f"\nrecommendation: {summary['level'].upper()} - {summary['message']}\n")
+    _write_severity_group("adverse", summary["adverse"])
+    _write_severity_group("informational", summary["informational"])
+    prior = memory_store_mod.latest_approved(args.source)
+    if prior:
+        if prior.get("sha256") == sha:
+            sys.stdout.write(f"\nalready approved as {prior.get('version')}; nothing to do\n")
+            return 0
+        sys.stdout.write(f"\nreplaces prior approved baseline {prior.get('version')} (sha256 {prior.get('sha256', '')[:12]})\n")
+        _write_content_diff(prior, blob)
+    if not args.yes:
+        sys.stdout.write("\nType 'approve' to baseline this content, anything else to abort: ")
+        sys.stdout.flush()
+        if sys.stdin.readline().strip().lower() != "approve":
+            sys.stdout.write("aborted; no baseline written\n")
+            return 1
+    path = memory_mod.approve(args.source, blob, findings=findings)
+    sys.stdout.write(f"approved: {path}\n")
+    return 0
+
+
+def _write_severity_group(label: str, findings: list) -> None:
+    if not findings:
+        return
+    sys.stdout.write(f"\n{label} ({len(findings)}):\n")
+    for f in findings:
+        signal = f.extra.get("signal", "")
+        sys.stdout.write(f"  L{f.line:<4} {f.kind.value:<22} {signal}: {f.detail}\n")
+
+
+def _write_content_diff(prior: dict, blob: str) -> None:
+    prior_content = prior.get("content")
+    if prior_content is None:
+        sys.stdout.write("  (prior baseline stored no content; diff unavailable)\n")
+        return
+    diff = difflib.unified_diff(
+        prior_content.splitlines(),
+        blob.splitlines(),
+        fromfile=f"approved {prior.get('version')}",
+        tofile="candidate",
+        lineterm="",
+    )
+    sys.stdout.write("\ndiff vs last approved:\n")
+    for line in diff:
+        sys.stdout.write(f"  {line}\n")
+
+
+def _handle_memory_list(args: argparse.Namespace) -> int:
+    rows = memory_store_mod.iter_memory()
+    if args.source:
+        rows = [r for r in rows if r.get("source") == args.source]
+    rows.sort(key=lambda r: (r.get("approved_at") or ""), reverse=True)
+    if args.json:
+        _emit_json(rows, pretty=True)
+        return 0
+    if not rows:
+        sys.stdout.write("(no approved-memory baselines)\n")
+        return 0
+    sys.stdout.write(f"{'SOURCE':<32} {'VERSION':<8} {'STATUS':<10} {'LEN':<7} {'SHA256':<14} APPROVED\n")
+    for r in rows:
+        sys.stdout.write(f"{str(r.get('source')):<32} {str(r.get('version') or '?'):<8} {str(r.get('status')):<10} {str(r.get('blob_len') or '?'):<7} {str(r.get('sha256') or '')[:12]:<14} {r.get('approved_at') or '?'}\n")
+    sys.stdout.write(f"\n{len(rows)} entries\n")
+    return 0
+
+
+def _handle_memory_show(args: argparse.Namespace) -> int:
+    if args.version:
+        record = memory_store_mod.lookup_version(args.source, args.version)
+    else:
+        record = memory_store_mod.latest_approved(args.source)
+    if not record:
+        sys.stderr.write(f"no approved-memory baseline for source {args.source!r}" + (f" version {args.version}" if args.version else "") + "\n")
+        return 1
+    _emit_json(record, pretty=True)
+    return 0
+
+
+def _handle_memory_forget(args: argparse.Namespace) -> int:
+    if not args.yes:
+        scope = f"version {args.version}" if args.version else "ALL versions"
+        sys.stdout.write(f"Remove {scope} of the approved-memory baseline for {args.source!r}? Type 'forget' to confirm: ")
+        sys.stdout.flush()
+        if sys.stdin.readline().strip().lower() != "forget":
+            sys.stdout.write("aborted\n")
+            return 1
+    removed = memory_store_mod.forget(args.source, version=args.version)
+    if not removed:
+        sys.stderr.write(f"no baseline found for source {args.source!r}" + (f" version {args.version}" if args.version else "") + "\n")
+        return 1
+    sys.stdout.write(f"removed baseline for {args.source}" + (f" {args.version}" if args.version else " (all versions)") + "\n")
     return 0
 
 
