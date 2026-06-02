@@ -139,7 +139,7 @@ def iter_library(library_root: Path | None = None, ecosystem: str | None = None)
     library_root = library_root or DEFAULT_LIBRARY_ROOT
     if not library_root.exists():
         return []
-    ecosystems = [ecosystem] if ecosystem else [d.name for d in library_root.iterdir() if d.is_dir()]
+    ecosystems = [ecosystem] if ecosystem else [d.name for d in library_root.iterdir() if d.is_dir() and d.name != "memory"]
     rows: list[dict] = []
     for eco in ecosystems:
         eco_root = library_root / eco
