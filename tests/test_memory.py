@@ -64,6 +64,7 @@ def test_check_fails_closed_for_unknown(tmp_path):
     verdict = memory.is_approved("dunnes", CLEAN, library_root=tmp_path)
     assert verdict.approved is False
     assert verdict.version is None
+    assert verdict.reason_code == "unknown_content"
 
 
 def test_approve_then_check_matches(tmp_path):
@@ -71,6 +72,28 @@ def test_approve_then_check_matches(tmp_path):
     verdict = memory.is_approved("dunnes", CLEAN, library_root=tmp_path)
     assert verdict.approved is True
     assert verdict.version == "v1"
+    assert verdict.reason_code == "approved"
+
+
+REASON_CODE_RE = r"^[a-z][a-z0-9_:]{0,63}$"
+
+
+def test_reason_code_is_closed_vocab_and_never_blob_bytes(tmp_path):
+    import re
+
+    # Unknown content: the blob itself must not bleed into reason_code.
+    unknown = memory.is_approved("dunnes", EVIL, library_root=tmp_path)
+    assert unknown.reason_code == "unknown_content"
+    assert re.match(REASON_CODE_RE, unknown.reason_code)
+
+    # Baseline present but not approved -> stable enum, no status/blob interpolation.
+    memory.approve("dunnes", CLEAN, library_root=tmp_path)
+    row = memory_store.latest_approved("dunnes", library_root=tmp_path)
+    memory_store.write_entry({**row, "status": "revoked"}, library_root=tmp_path)
+    not_approved = memory.is_approved("dunnes", CLEAN, library_root=tmp_path)
+    assert not_approved.approved is False
+    assert not_approved.reason_code == "baseline_not_approved"
+    assert re.match(REASON_CODE_RE, not_approved.reason_code)
 
 
 def test_changed_content_fails_closed(tmp_path):

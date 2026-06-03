@@ -30,16 +30,17 @@ class Verdict:
     source: str
     sha256: str
     version: str | None = None
+    reason_code: str = "approved"
 
 
 def is_approved(source: str, blob: str, library_root: Path | None = None) -> Verdict:
     sha = memory_store.blob_sha256(blob)
     record = memory_store.lookup(source, sha, library_root=library_root)
     if record is None:
-        return Verdict(False, "no approved baseline for this content", source, sha)
+        return Verdict(False, "no approved baseline for this content", source, sha, reason_code="unknown_content")
     if record.get("status") != memory_store.APPROVED_STATUS:
-        return Verdict(False, f"baseline status is {record.get('status')!r}, not approved", source, sha)
-    return Verdict(True, "content matches an approved baseline", source, sha, record.get("version"))
+        return Verdict(False, f"baseline status is {record.get('status')!r}, not approved", source, sha, reason_code="baseline_not_approved")
+    return Verdict(True, "content matches an approved baseline", source, sha, record.get("version"), reason_code="approved")
 
 
 def approve(

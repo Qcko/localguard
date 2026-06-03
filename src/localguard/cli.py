@@ -297,6 +297,7 @@ def _handle_memory_check(args: argparse.Namespace) -> int:
         _emit_json({
             "approved": verdict.approved,
             "reason": verdict.reason,
+            "reason_code": verdict.reason_code,
             "source": verdict.source,
             "sha256": verdict.sha256,
             "version": verdict.version,
