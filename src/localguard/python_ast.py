@@ -71,13 +71,20 @@ class _Context:
 
 
 def audit_python(source: SourceFile) -> list[Finding]:
+    # RecursionError: machine-generated files (e.g. sympy's nested
+    # expressions) can exceed the interpreter limit during parse or visit.
+    # Treat them like unparseable files rather than failing the whole
+    # package audit closed.
     try:
         tree = ast.parse(source.text, filename=source.rel)
-    except SyntaxError:
+    except (SyntaxError, RecursionError):
         return []
     context = _Context(findings=[], source=source)
     aliases = _collect_aliases(tree)
-    _PythonVisitor(context, aliases).visit(tree)
+    try:
+        _PythonVisitor(context, aliases).visit(tree)
+    except RecursionError:
+        pass
     return context.findings
 
 

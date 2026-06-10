@@ -71,6 +71,16 @@ def test_python_ast_handles_syntax_error_gracefully():
     # don't crash.
 
 
+def test_python_ast_handles_recursion_error_gracefully():
+    """Deeply nested machine-generated sources (sympy's expression files)
+    exceed the interpreter recursion limit inside ast.parse / the visitor.
+    Regression: the RecursionError escaped audit_python and failed the
+    whole package audit closed (reproduced with sympy==1.14.0)."""
+    deep = "x = " + "(" * 30000 + "1" + ")" * 30000
+    findings = python_ast.audit_python(_src(deep, name="generated.py"))
+    assert findings == []
+
+
 def test_js_ast_handles_syntax_error_gracefully():
     """tree-sitter is error-recovering -- a malformed JS file should not
     crash and may still produce partial findings from the valid prefix."""
