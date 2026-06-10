@@ -107,6 +107,35 @@ def latest_known_good(name: str, ecosystem: str, library_root: Path | None = Non
     return None
 
 
+def accepted_entry_for_version(
+    name: str, version: str, ecosystem: str, library_root: Path | None = None
+) -> dict | None:
+    """Most recent ACCEPTED baseline for this exact version, or None.
+
+    Preferred over `latest_known_good` when the candidate's version is
+    itself accepted: two accepted versions of one package can coexist in a
+    lockfile (e.g. setuptools pinned differently by two parents), and
+    diffing each against the *newest* accepted entry makes them alternate
+    as drift against each other depending on acceptance order.
+    """
+    library_root = library_root or _default_library_root()
+    index_path = library_root / ecosystem / name / "_index.json"
+    data = _read_json(index_path)
+    if not data:
+        return None
+    for meta in reversed(data.get("entries", [])):
+        if meta.get("version") != version:
+            continue
+        report_path = library_root / ecosystem / name / version / f"{meta['target_hash']}.json"
+        report = _read_json(report_path)
+        if not report:
+            continue
+        # Legacy entries without status are treated as accepted (backward-compat).
+        if (report.get("status") or "accepted") == "accepted":
+            return report
+    return None
+
+
 def prior_blocked_encounters(name: str, ecosystem: str, library_root: Path | None = None) -> list[dict]:
     """List of blocked library entries (any version) for this package.
 

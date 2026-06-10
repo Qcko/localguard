@@ -204,6 +204,64 @@ def test_latest_known_good_skips_blocked_entries(tmp_path: Path):
     assert baseline.get("status") == "accepted"
 
 
+def test_two_accepted_versions_do_not_drift_against_each_other(tmp_path: Path):
+    """Two accepted versions of one package can coexist in a lockfile
+    (setuptools 81.0.0 via torch + 82.0.1 via ctranslate2). Re-installing
+    the older one must diff against its OWN version's accepted entry, not
+    the newest accepted entry — otherwise the two alternate as drift
+    depending on acceptance order."""
+    cache_root = tmp_path / "cache"
+    library_root = tmp_path / "lib"
+    for fixture, version in (("tampered_v1", "0.1.0"), ("tampered_v2", "0.2.0")):
+        report = audit.audit_path(FIXTURES / fixture).to_dict()
+        report["name"] = "drifty-pkg"
+        report["version"] = version
+        report["status"] = "accepted"
+        manifest.write_library_entry(report, library_root=library_root)
+    # v2 is the newest accepted entry; without the own-version preference
+    # this re-install of v1 would diff against v2 and flag drift.
+    _seed_cache(cache_root, FIXTURES / "tampered_v1", "drifty-pkg", "0.1.0")
+
+    verdict = preflight.preflight("drifty-pkg==0.1.0", cache_root=cache_root, library_root=library_root, min_score=0)
+
+    assert verdict.safe, verdict.reasons
+    assert verdict.status == "safe"
+
+
+def test_tampered_reupload_of_accepted_version_still_drifts(tmp_path: Path):
+    """The own-version baseline must not weaken the gate: a re-upload of an
+    accepted version with DIFFERENT bytes (hash mismatch) still diffs its
+    findings against the accepted entry and flags novel high-risk surfaces."""
+    cache_root = tmp_path / "cache"
+    library_root = tmp_path / "lib"
+    baseline = audit.audit_path(FIXTURES / "tampered_v1").to_dict()
+    baseline["name"] = "drifty-pkg"
+    baseline["version"] = "0.1.0"
+    baseline["status"] = "accepted"
+    manifest.write_library_entry(baseline, library_root=library_root)
+    # Same version string, different (v2) content — a tampered re-upload.
+    _seed_cache(cache_root, FIXTURES / "tampered_v2", "drifty-pkg", "0.1.0")
+
+    verdict = preflight.preflight("drifty-pkg==0.1.0", cache_root=cache_root, library_root=library_root, min_score=0)
+
+    assert not verdict.safe
+    assert verdict.status == "drift"
+    assert any("novel high-risk" in r for r in verdict.reasons)
+
+
+def test_accepted_entry_for_version_skips_blocked_same_version(tmp_path: Path):
+    """A blocked entry for the candidate's version must not satisfy the
+    own-version lookup — only accepted entries establish a baseline."""
+    library_root = tmp_path / "lib"
+    blocked = audit.audit_path(FIXTURES / "tampered_v2").to_dict()
+    blocked["name"] = "drifty-pkg"
+    blocked["version"] = "0.2.0"
+    blocked["status"] = "blocked-suspicious"
+    manifest.write_library_entry(blocked, library_root=library_root)
+
+    assert manifest.accepted_entry_for_version("drifty-pkg", "0.2.0", "pypi", library_root=library_root) is None
+
+
 def test_preflight_detects_drift_against_baseline(tmp_path: Path):
     cache_root = tmp_path / "cache"
     library_root = tmp_path / "lib"

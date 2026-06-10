@@ -122,7 +122,7 @@ def _pinned_profile_for_spec(raw_spec: str, ecosystem: str | None, library_root:
         spec = fetch.parse_spec(raw_spec, ecosystem_override=ecosystem)
     except Exception:
         return None
-    baseline = manifest.latest_known_good(spec.name, spec.ecosystem, library_root=library_root)
+    baseline = _baseline_for_spec(spec, library_root)
     if not baseline:
         return None
     pinned = baseline.get("profile")
@@ -136,10 +136,24 @@ def verdict_for_report(report_dict: dict, spec: fetch.PackageSpec, *, min_score:
     min_score = DEFAULT_MIN_SCORE if min_score is None else min_score
     auto_accept_score = DEFAULT_AUTO_ACCEPT_SCORE if auto_accept_score is None else auto_accept_score
     score = (report_dict.get("score") or {}).get("final_score") or 0
-    baseline = manifest.latest_known_good(spec.name, spec.ecosystem, library_root=library_root)
+    baseline = _baseline_for_spec(spec, library_root)
     if baseline is None:
         return _first_encounter_verdict(report_dict, spec, score, min_score, accept_new, auto_accept_score, library_root)
     return _diff_verdict(report_dict, baseline, spec, score, min_score)
+
+
+def _baseline_for_spec(spec: fetch.PackageSpec, library_root: Path) -> dict | None:
+    """The candidate's own version's accepted entry when one exists,
+    falling back to the newest accepted entry of any version. Diffing a
+    re-install of an already-accepted version against a *different*
+    accepted version would flag the two as drift against each other."""
+    if spec.version:
+        own = manifest.accepted_entry_for_version(
+            spec.name, spec.version, spec.ecosystem, library_root=library_root
+        )
+        if own is not None:
+            return own
+    return manifest.latest_known_good(spec.name, spec.ecosystem, library_root=library_root)
 
 
 def _first_encounter_verdict(report_dict, spec, score, min_score, accept_new, auto_accept_score, library_root) -> Verdict:
