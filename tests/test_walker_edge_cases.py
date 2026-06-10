@@ -21,6 +21,7 @@ from pathlib import Path
 import pytest
 
 from localguard import audit, js_ast, python_ast
+from localguard.report import SurfaceKind
 from localguard.walker import SourceFile, walk_target
 
 
@@ -75,10 +76,83 @@ def test_python_ast_handles_recursion_error_gracefully():
     """Deeply nested machine-generated sources (sympy's expression files)
     exceed the interpreter recursion limit inside ast.parse / the visitor.
     Regression: the RecursionError escaped audit_python and failed the
-    whole package audit closed (reproduced with sympy==1.14.0)."""
-    deep = "x = " + "(" * 30000 + "1" + ")" * 30000
+    whole package audit closed (reproduced with sympy==1.14.0).
+
+    The skip must not be silent: the file runs but cannot be analyzed, so
+    padding a payload past the recursion limit would otherwise be an
+    audit-evasion channel. The audit reports exactly one unauditable_file
+    finding for it.
+
+    Construct notes (CPython 3.12): a long binop chain recurses in the
+    C-AST -> Python-AST conversion; deep parens raise SyntaxError ("too
+    many nested parentheses") instead, which is the silent-skip path."""
+    deep = "x = 1" + "+1" * 30000
     findings = python_ast.audit_python(_src(deep, name="generated.py"))
+    assert [f.kind for f in findings] == [SurfaceKind.UNAUDITABLE_FILE]
+    assert findings[0].file == "generated.py"
+    assert findings[0].extra["stage"] == "parse"
+
+
+def test_python_ast_visit_stage_recursion_reports_unauditable():
+    """A depth that parses fine but blows the visitor's recursion (the
+    sympy shape) must surface the same finding. Stage not asserted -- the
+    parse/visit boundary shifts with the recursion limit, which is pinned
+    here so a host (or pytest plugin) with a raised limit can't make the
+    construct pass cleanly and fail the test."""
+    import sys
+
+    limit = sys.getrecursionlimit()
+    sys.setrecursionlimit(1000)
+    try:
+        deep = "x = 1" + "+1" * 1000
+        findings = python_ast.audit_python(_src(deep, name="generated.py"))
+    finally:
+        sys.setrecursionlimit(limit)
+    assert [f.kind for f in findings] == [SurfaceKind.UNAUDITABLE_FILE]
+
+
+def test_python_ast_parser_memory_error_reports_unauditable():
+    """Deep unary chains exhaust parser memory instead of the recursion
+    limit (CPython 3.12: MemoryError from ast.parse). Regression guard:
+    this escaped audit_python entirely before being caught alongside
+    RecursionError."""
+    deep = "x = " + "not " * 30000 + "1"
+    findings = python_ast.audit_python(_src(deep, name="generated.py"))
+    assert [f.kind for f in findings] == [SurfaceKind.UNAUDITABLE_FILE]
+
+
+def test_python_ast_syntax_error_stays_silent_skip():
+    """A file that cannot parse cannot execute either, so it is not an
+    audit-evasion channel -- no synthetic finding, just a clean skip."""
+    findings = python_ast.audit_python(_src("def broken( :\n    pass\n", name="bad.py"))
     assert findings == []
+
+
+def test_unauditable_file_is_scored_but_not_high_risk():
+    """The synthetic finding must deduct from the score (a package full of
+    unauditable files deserves scrutiny) WITHOUT being a high-risk drift
+    surface -- otherwise every already-accepted package containing such
+    files (sympy) would re-block on its next same-hash reinstall the
+    moment the auditor learned to report them."""
+    from localguard import preflight, rubric
+
+    deep = "x = 1" + "+1" * 30000
+    findings = python_ast.audit_python(_src(deep, name="pkg/generated.py"))
+    breakdown = rubric.score(findings)
+    deduction_kinds = {d["kind"] for d in breakdown.deductions}
+    assert "unauditable_file" in deduction_kinds
+    assert breakdown.final_score < rubric.STARTING_SCORE
+    assert "unauditable_file" not in preflight.HIGH_RISK_KINDS
+
+
+def test_unauditable_file_weighted_in_every_profile():
+    """Strict-by-design surface: identical weight in every profile, so it
+    is never role-typical and a profile switch can never silence it."""
+    from localguard import rubric
+
+    for profile, weights in rubric.PROFILE_WEIGHTS.items():
+        assert SurfaceKind.UNAUDITABLE_FILE in weights, profile
+        assert weights[SurfaceKind.UNAUDITABLE_FILE] == rubric.Weight(5, 15), profile
 
 
 def test_js_ast_handles_syntax_error_gracefully():

@@ -73,19 +73,40 @@ class _Context:
 def audit_python(source: SourceFile) -> list[Finding]:
     # RecursionError: machine-generated files (e.g. sympy's nested
     # expressions) can exceed the interpreter limit during parse or visit.
-    # Treat them like unparseable files rather than failing the whole
-    # package audit closed.
+    # Such a file is valid Python that RUNS but cannot be analyzed, so the
+    # skip is reported as an unauditable_file finding -- padding a payload
+    # past the recursion limit must leave a trace, not a blind spot.
+    # SyntaxError stays a silent skip: a file that cannot parse cannot
+    # execute either, so it is not an audit-evasion channel.
+    # MemoryError joins RecursionError: deep unary chains ("not not ... 1")
+    # blow parser memory rather than the recursion limit, and whether such a
+    # file imports cleanly depends on the host -- report it rather than
+    # crash or silently skip. Accepted trade: genuine host memory pressure
+    # during an audit gets recorded as a property of the file (cap bounds
+    # the damage; a re-audit on a healthy host clears it).
     try:
         tree = ast.parse(source.text, filename=source.rel)
-    except (SyntaxError, RecursionError):
+    except SyntaxError:
         return []
+    except (RecursionError, MemoryError):
+        return [_unauditable_finding(source, stage="parse")]
     context = _Context(findings=[], source=source)
     aliases = _collect_aliases(tree)
     try:
         _PythonVisitor(context, aliases).visit(tree)
-    except RecursionError:
-        pass
+    except (RecursionError, MemoryError):
+        context.findings.append(_unauditable_finding(source, stage="visit"))
     return context.findings
+
+
+def _unauditable_finding(source: SourceFile, *, stage: str) -> Finding:
+    return Finding(
+        kind=SurfaceKind.UNAUDITABLE_FILE,
+        file=source.rel,
+        line=0,
+        detail=f"nesting exceeds the auditor recursion limit ({stage}); file runs but was not analyzed",
+        extra={"stage": stage},
+    )
 
 
 def _collect_aliases(tree: ast.AST) -> dict[str, str]:

@@ -26,6 +26,7 @@ PLUGIN_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
     SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+    SurfaceKind.UNAUDITABLE_FILE: Weight(5, 15),
 }
 
 # An MCP server's purpose is to expose tools to a model: spawning subprocesses
@@ -48,6 +49,7 @@ MCP_SERVER_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
     SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+    SurfaceKind.UNAUDITABLE_FILE: Weight(5, 15),
 }
 
 # A CLI framework's whole purpose is to dispatch user-supplied commands to
@@ -68,6 +70,7 @@ CLI_FRAMEWORK_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
     SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+    SurfaceKind.UNAUDITABLE_FILE: Weight(5, 15),
 }
 
 # A workflow orchestrator (airflow, prefect, dagster, luigi, kedro,
@@ -95,6 +98,7 @@ WORKFLOW_ORCHESTRATOR_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
     SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+    SurfaceKind.UNAUDITABLE_FILE: Weight(5, 15),
 }
 
 # A documentation builder (sphinx, mkdocs, docutils, myst-parser, pdoc).
@@ -116,6 +120,7 @@ DOC_BUILDER_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
     SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+    SurfaceKind.UNAUDITABLE_FILE: Weight(5, 15),
 }
 
 # An agentic / LLM-orchestration framework (langchain ecosystem, llama-index
@@ -141,6 +146,7 @@ AGENTIC_FRAMEWORK_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
     SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+    SurfaceKind.UNAUDITABLE_FILE: Weight(5, 15),
 }
 
 # A native GUI toolkit (kivy, pyqt5/6, pyside2/6, wxpython, dearpygui,
@@ -163,6 +169,7 @@ GUI_TOOLKIT_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
     SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+    SurfaceKind.UNAUDITABLE_FILE: Weight(5, 15),
 }
 
 # A data-app builder (gradio, streamlit, dash, panel, nicegui, reflex, voila).
@@ -194,6 +201,7 @@ DATA_APP_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
     SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+    SurfaceKind.UNAUDITABLE_FILE: Weight(5, 15),
 }
 
 # An async runtime (twisted, gevent, eventlet, curio, anyio backends).
@@ -218,6 +226,7 @@ ASYNC_RUNTIME_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
     SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+    SurfaceKind.UNAUDITABLE_FILE: Weight(5, 15),
 }
 
 # A task queue / job runner (celery, rq, dramatiq, huey, arq, kombu).
@@ -242,6 +251,7 @@ TASK_QUEUE_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
     SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+    SurfaceKind.UNAUDITABLE_FILE: Weight(5, 15),
 }
 
 # A notebook runtime (ipython, jupyterlab, notebook, ipykernel, jupyter-*).
@@ -269,6 +279,7 @@ NOTEBOOK_RUNTIME_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
     SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+    SurfaceKind.UNAUDITABLE_FILE: Weight(5, 15),
 }
 
 # A web application framework (django, flask, fastapi, starlette, sanic,
@@ -298,6 +309,7 @@ WEB_FRAMEWORK_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
     SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+    SurfaceKind.UNAUDITABLE_FILE: Weight(5, 15),
 }
 
 # A browser-automation / scraping library's purpose is fetching arbitrary
@@ -322,6 +334,7 @@ SCRAPING_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
     SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+    SurfaceKind.UNAUDITABLE_FILE: Weight(5, 15),
 }
 
 # A format / codec library's purpose is parsing or emitting file formats
@@ -345,6 +358,7 @@ FORMAT_CODEC_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
     SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+    SurfaceKind.UNAUDITABLE_FILE: Weight(5, 15),
 }
 
 # A template engine's whole job is to compile() user-supplied template
@@ -368,6 +382,7 @@ TEMPLATE_ENGINE_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
     SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+    SurfaceKind.UNAUDITABLE_FILE: Weight(5, 15),
 }
 
 # A test framework's purpose is forking worker processes (xdist), writing
@@ -390,6 +405,7 @@ TEST_FRAMEWORK_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
     SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+    SurfaceKind.UNAUDITABLE_FILE: Weight(5, 15),
 }
 
 # A cloud SDK's purpose is making API calls to provider endpoints (regional
@@ -414,6 +430,7 @@ CLOUD_SDK_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
     SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+    SurfaceKind.UNAUDITABLE_FILE: Weight(5, 15),
 }
 
 # An observability library's purpose is to send telemetry to a backend --
@@ -436,6 +453,7 @@ OBSERVABILITY_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
     SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+    SurfaceKind.UNAUDITABLE_FILE: Weight(5, 15),
 }
 
 # A database driver / ORM's purpose is to open outbound connections to a
@@ -462,6 +480,7 @@ DATABASE_DRIVER_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
     SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+    SurfaceKind.UNAUDITABLE_FILE: Weight(5, 15),
 }
 
 # An ML framework's purpose stretches data-science relaxations further:
@@ -486,6 +505,7 @@ ML_FRAMEWORK_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
     SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+    SurfaceKind.UNAUDITABLE_FILE: Weight(5, 15),
 }
 
 # A numerical/data-science library's purpose is parallel compute (joblib /
@@ -510,6 +530,7 @@ DATA_SCIENCE_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
     SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+    SurfaceKind.UNAUDITABLE_FILE: Weight(5, 15),
 }
 
 # A Python build backend / packaging tool's purpose is to invoke compilers and
@@ -533,6 +554,7 @@ BUILD_TOOL_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
     SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+    SurfaceKind.UNAUDITABLE_FILE: Weight(5, 15),
 }
 
 # Dev-server bundlers (vite, webpack-dev-server, snowpack, ...) -- bundling
@@ -557,6 +579,7 @@ DEV_SERVER_BUNDLER_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
     SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+    SurfaceKind.UNAUDITABLE_FILE: Weight(5, 15),
 }
 
 # A web server's purpose is to bind to a port, accept connections, fork worker
@@ -577,6 +600,7 @@ WEB_SERVER_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
     SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+    SurfaceKind.UNAUDITABLE_FILE: Weight(5, 15),
 }
 
 # An HTTP client library's whole purpose is making outbound network calls to
@@ -599,6 +623,7 @@ NETWORK_LIBRARY_WEIGHTS: dict[SurfaceKind, Weight] = {
     SurfaceKind.DATA_EXFIL_HINT: Weight(20, 40),
     SurfaceKind.MCP_TRANSPORT_DRIFT: Weight(30, 30),
     SurfaceKind.PROMPT_INJECTION_HINT: Weight(15, 30),
+    SurfaceKind.UNAUDITABLE_FILE: Weight(5, 15),
 }
 
 PROFILE_PLUGIN = "plugin"
@@ -1386,7 +1411,16 @@ def detect_profile_from_metadata(audit_root, ecosystem: str) -> tuple[str, str] 
 
 def score(findings: list[Finding], weights: dict[SurfaceKind, Weight] | None = None, *, profile: str = DEFAULT_PROFILE) -> ScoreBreakdown:
     weights = weights or weights_for(profile)
-    runtime = [f for f in findings if walker.find_context(f.file) == "runtime"]
+    # unauditable_file bypasses the runtime-context filter: the kind marks
+    # an auditor failure, not a code-pattern match, so the generated/tests
+    # false-positive rationale behind the filter does not apply -- and the
+    # filter would otherwise let a payload dodge the deduction simply by
+    # being named *_pb2.py or living under generated/.
+    runtime = [
+        f for f in findings
+        if f.kind is SurfaceKind.UNAUDITABLE_FILE
+        or walker.find_context(f.file) == "runtime"
+    ]
     deductions = _build_deductions(runtime, weights)
     _annotate_role_typicality(deductions, weights)
     total_deducted = sum(d["deducted"] for d in deductions)

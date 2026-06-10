@@ -20,6 +20,11 @@ class SurfaceKind(str, Enum):
     MCP_RESOURCE = "mcp_resource"
     MCP_TRANSPORT_DRIFT = "mcp_transport_drift"
     PROMPT_INJECTION_HINT = "prompt_injection_hint"
+    # A runtime-valid file the auditor could not analyze (e.g. nesting past
+    # the interpreter recursion limit). The file executes but its findings
+    # are invisible -- padding a payload file past the limit would otherwise
+    # be a silent audit-evasion channel, so the skip itself is the finding.
+    UNAUDITABLE_FILE = "unauditable_file"
 
 
 class Confidence(str, Enum):
