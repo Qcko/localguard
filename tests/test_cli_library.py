@@ -43,6 +43,30 @@ def test_iter_library_finds_scoped_npm_entries(tmp_path):
     assert ("bare", "2.0.0") in names
 
 
+def test_library_commands_resolve_root_from_env_without_attr_patch(
+    tmp_path, monkeypatch, capsys
+):
+    # Regression: the module-level __getattr__ for DEFAULT_LIBRARY_ROOT does
+    # not fire for bare-name references inside manifest's own functions
+    # (PEP 562 covers external attribute access only), so the env-var
+    # production path raised NameError in every library-reading command.
+    # This test deliberately does NOT monkeypatch the attribute — setting it
+    # creates a real module global that masks the bug.
+    lib = tmp_path / "lib"
+    monkeypatch.setenv("LOCALGUARD_LIBRARY", str(lib))
+    # Other tests' monkeypatch.setattr teardown materialises the
+    # __getattr__-derived value into vars(manifest); scrub it so this test
+    # genuinely exercises the no-module-global production path.
+    monkeypatch.delattr(manifest, "DEFAULT_LIBRARY_ROOT", raising=False)
+    _seed_entry(lib, "envpkg", "1.0", 95)
+    assert any(r["name"] == "envpkg" for r in manifest.iter_library())
+    rc = cli.main(["library", "list"])
+    assert rc == 0
+    assert "envpkg" in capsys.readouterr().out
+    # External attribute access (the back-compat __getattr__) still works.
+    assert manifest.DEFAULT_LIBRARY_ROOT == lib
+
+
 def test_library_list_empty(tmp_path, monkeypatch, capsys):
     _patch_lib(monkeypatch, tmp_path / "lib")
     rc = cli.main(["library", "list"])

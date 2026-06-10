@@ -12,16 +12,30 @@ PINNED_FILENAME = "pinned.json"
 SCHEMA_VERSION = 1
 
 
+def _default_library_root() -> Path:
+    # Honor an explicit module attribute first: tests (and any caller)
+    # override via `monkeypatch.setattr(manifest, "DEFAULT_LIBRARY_ROOT", …)`,
+    # which creates a real module global that must win over the env var.
+    # Internal callers can't use the bare name directly — PEP 562 module
+    # __getattr__ only fires for attribute access from outside the module,
+    # so `DEFAULT_LIBRARY_ROOT` inside these functions raises NameError
+    # when no override is set.
+    override = globals().get("DEFAULT_LIBRARY_ROOT")
+    if override is not None:
+        return Path(override)
+    value = os.environ.get("LOCALGUARD_LIBRARY")
+    if not value:
+        raise RuntimeError(
+            "LOCALGUARD_LIBRARY is not set. Point it at the dir "
+            "you want localguard to use as its baseline library "
+            "(e.g. `setx LOCALGUARD_LIBRARY \"%USERPROFILE%\\.localguard\\library\"`)."
+        )
+    return Path(value)
+
+
 def __getattr__(name: str) -> Any:
     if name == "DEFAULT_LIBRARY_ROOT":
-        value = os.environ.get("LOCALGUARD_LIBRARY")
-        if not value:
-            raise RuntimeError(
-                "LOCALGUARD_LIBRARY is not set. Point it at the dir "
-                "you want localguard to use as its baseline library "
-                "(e.g. `setx LOCALGUARD_LIBRARY \"%USERPROFILE%\\.localguard\\library\"`)."
-            )
-        return Path(value)
+        return _default_library_root()
     raise AttributeError(name)
 
 
@@ -53,7 +67,7 @@ def find_pinned_entry(project_root: Path, name: str | None, target_hash: str) ->
 
 
 def write_library_entry(report: dict[str, Any], library_root: Path | None = None, *, refresh: bool = False) -> Path:
-    library_root = library_root or DEFAULT_LIBRARY_ROOT
+    library_root = library_root or _default_library_root()
     bucket = _bucket_for(report, library_root)
     bucket.mkdir(parents=True, exist_ok=True)
     stamped = dict(report)
@@ -74,7 +88,7 @@ def latest_known_good(name: str, ecosystem: str, library_root: Path | None = Non
     it, so they must not establish a trust baseline that future installs
     diff against.
     """
-    library_root = library_root or DEFAULT_LIBRARY_ROOT
+    library_root = library_root or _default_library_root()
     index_path = library_root / ecosystem / name / "_index.json"
     data = _read_json(index_path)
     if not data:
@@ -101,7 +115,7 @@ def prior_blocked_encounters(name: str, ecosystem: str, library_root: Path | Non
     "you have a prior blocked encounter at v1.0" historical context
     when re-encountering a package whose previous version was declined.
     """
-    library_root = library_root or DEFAULT_LIBRARY_ROOT
+    library_root = library_root or _default_library_root()
     name_root = library_root / ecosystem / name
     if not name_root.exists():
         return []
@@ -126,7 +140,7 @@ def prior_blocked_encounters(name: str, ecosystem: str, library_root: Path | Non
 
 
 def library_lookup(target_hash: str, name: str | None, ecosystem: str, library_root: Path | None = None) -> dict | None:
-    library_root = library_root or DEFAULT_LIBRARY_ROOT
+    library_root = library_root or _default_library_root()
     if not name:
         return None
     name_root = library_root / ecosystem / name
@@ -136,7 +150,7 @@ def library_lookup(target_hash: str, name: str | None, ecosystem: str, library_r
 
 
 def iter_library(library_root: Path | None = None, ecosystem: str | None = None) -> list[dict]:
-    library_root = library_root or DEFAULT_LIBRARY_ROOT
+    library_root = library_root or _default_library_root()
     if not library_root.exists():
         return []
     ecosystems = [ecosystem] if ecosystem else [d.name for d in library_root.iterdir() if d.is_dir() and d.name != "memory"]
@@ -181,7 +195,7 @@ def _profile_and_status_for_entry(name_dir: Path, entry: dict) -> tuple[str | No
 
 
 def library_stats(library_root: Path | None = None) -> dict:
-    library_root = library_root or DEFAULT_LIBRARY_ROOT
+    library_root = library_root or _default_library_root()
     rows = iter_library(library_root=library_root)
     by_eco: dict[str, int] = {}
     by_profile: dict[str, int] = {}
@@ -238,7 +252,7 @@ def _library_size(library_root: Path) -> int:
 
 
 def find_library_entry(name: str, ecosystem: str, version: str | None = None, library_root: Path | None = None) -> dict | None:
-    library_root = library_root or DEFAULT_LIBRARY_ROOT
+    library_root = library_root or _default_library_root()
     name_root = library_root / ecosystem / name
     index = _read_json(name_root / "_index.json")
     if not index:
@@ -253,7 +267,7 @@ def find_library_entry(name: str, ecosystem: str, version: str | None = None, li
 
 
 def remove_library_entry(name: str, ecosystem: str, version: str, library_root: Path | None = None) -> bool:
-    library_root = library_root or DEFAULT_LIBRARY_ROOT
+    library_root = library_root or _default_library_root()
     name_root = library_root / ecosystem / name
     index_path = name_root / "_index.json"
     index = _read_json(index_path)
